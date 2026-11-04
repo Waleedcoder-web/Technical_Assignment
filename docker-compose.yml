@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  # ===================================================================
+  # 1. Backend Service (Express.js + TypeScript + Supabase REST)
+  # ===================================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: havenkey-backend
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - NODE_ENV=production
+      - NEXT_PUBLIC_SUPABASE_URL=https://zhaxrezorucqfdxwxvme.supabase.co
+      - NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_EieSlOPQetQvRD6igkpppA_DasiapBf
+    networks:
+      - havenkey-network
+
+  # ===================================================================
+  # 2. Frontend Service (Next.js 16 App Router + Tailwind CSS)
+  # ===================================================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: havenkey-frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - NEXT_PUBLIC_SUPABASE_URL=https://zhaxrezorucqfdxwxvme.supabase.co
+      - NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_EieSlOPQetQvRD6igkpppA_DasiapBf
+    depends_on:
+      - backend
+    networks:
+      - havenkey-network
+
+# =====================================================================
+# Isolated Internal Docker Bridge Network
+# =====================================================================
+networks:
+  havenkey-network:
+    driver: bridge
