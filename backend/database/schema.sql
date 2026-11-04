@@ -93,7 +93,7 @@ VALUES
     ),
     (
         'admin admin',
-        'admin.admin@havenkey.pk',
+        'admin@gmail.com',
         '+92 300 0000000',
         '61101-0000000-1',
         '$2b$10$ZrXXjspsIEcv5zEOA.7D.OQ3gY4b1IFN1ZGiCUvbVYq.MADIvs37e', -- Admin@12345

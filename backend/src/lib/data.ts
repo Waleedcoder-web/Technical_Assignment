@@ -45,7 +45,7 @@ export const users: User[] = [
     id: "usr-03",
     fullname: "admin admin",
     name: "admin admin",
-    email: "admin.admin@havenkey.pk",
+    email: "admin@gmail.com",
     phone_no: "+92 300 0000000",
     phone: "+92 300 0000000",
     CNIC: "61101-0000000-1",
