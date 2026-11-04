@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import Navbar from "@/components/layout/navbar";
 import Footer from "@/components/layout/footer";
 import PropertyCard from "@/components/ui/property-card";
-import { mockProperties, Property } from "@/lib/mock-data";
+import { mockProperties, Property, getStoredProperties } from "@/lib/mock-data";
 
 export default function PropertiesPage() {
+  const [propertiesList, setPropertiesList] = useState<Property[]>(mockProperties);
   const [selectedType, setSelectedType] = useState<string>("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedCity, setSelectedCity] = useState<string>("all");
@@ -15,8 +16,15 @@ export default function PropertiesPage() {
   const [sortBy, setSortBy] = useState<string>("featured");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
+  useEffect(() => {
+    setPropertiesList(getStoredProperties());
+    const handler = () => setPropertiesList(getStoredProperties());
+    window.addEventListener("havenkey_properties_change", handler);
+    return () => window.removeEventListener("havenkey_properties_change", handler);
+  }, []);
+
   const filteredProperties = useMemo(() => {
-    return mockProperties.filter((property) => {
+    return propertiesList.filter((property) => {
       if (selectedType !== "all" && property.transactionType !== selectedType) {
         return false;
       }

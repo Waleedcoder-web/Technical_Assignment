@@ -308,3 +308,28 @@ export const mockCustomerLeases = [
     depositProtected: "PKR 760,000 in Escrow",
   },
 ];
+
+export const getStoredProperties = (): Property[] => {
+  if (typeof window === "undefined") return mockProperties;
+  try {
+    const raw = localStorage.getItem("havenkey_properties");
+    if (!raw) {
+      localStorage.setItem("havenkey_properties", JSON.stringify(mockProperties));
+      return mockProperties;
+    }
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : mockProperties;
+  } catch {
+    return mockProperties;
+  }
+};
+
+export const saveStoredProperties = (items: Property[]) => {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem("havenkey_properties", JSON.stringify(items));
+    window.dispatchEvent(new Event("havenkey_properties_change"));
+  } catch (e) {
+    console.error("Failed to save properties to localStorage", e);
+  }
+};
