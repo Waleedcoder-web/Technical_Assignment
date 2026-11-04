@@ -1,26 +1,24 @@
 {
-  "name": "patronecs",
-  "version": "0.1.0",
+  "name": "patronecs-monorepo",
+  "version": "1.0.0",
   "private": true,
+  "description": "HavenKey Full-Stack Platform (Next.js + Express.js)",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "next": "16.4.4",
-    "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "dev": "concurrently -n \"FRONTEND,BACKEND\" -c \"cyan,green\" \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "npm --prefix backend run dev",
+    "test:supabase": "npm --prefix backend run test:supabase",
+    "build": "npm --prefix backend run build && npm --prefix frontend run build"
   },
   "devDependencies": {
-    "@tailwindcss/turbopack": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.4.4",
-    "tailwindcss": "^4",
-    "typescript": "^5"
+    "concurrently": "^9.1.2"
+  },
+  "dependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "bcryptjs": "^3.0.3"
   }
 }

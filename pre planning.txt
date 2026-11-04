@@ -1,0 +1,7 @@
+wen aur RAG ki responsibilities
+Component	Responsibility
+Qwen2.5 1.5B	User intent samajhna
+Qwen2.5 1.5B	Search filters / structured queries banana
+RAG	Relevant company documents retrieve karna
+Qwen2.5 1.5B	Retrieved context se answer banana
+Supabase	Database aur vector storage
