@@ -92,6 +92,16 @@ VALUES
         'landlord'
     ),
     (
+        'admin admin',
+        'admin.admin@havenkey.pk',
+        '+92 300 0000000',
+        '61101-0000000-1',
+        '$2b$10$ZrXXjspsIEcv5zEOA.7D.OQ3gY4b1IFN1ZGiCUvbVYq.MADIvs37e', -- Admin@12345
+        'HavenKey Operations HQ, Islamabad',
+        '44000',
+        'admin'
+    ),
+    (
         'Admin Operator',
         'admin@havenkey.pk',
         '+92 300 0000000',

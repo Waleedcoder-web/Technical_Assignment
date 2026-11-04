@@ -43,6 +43,23 @@ export const users: User[] = [
   },
   {
     id: "usr-03",
+    fullname: "admin admin",
+    name: "admin admin",
+    email: "admin.admin@havenkey.pk",
+    phone_no: "+92 300 0000000",
+    phone: "+92 300 0000000",
+    CNIC: "61101-0000000-1",
+    cnic: "61101-0000000-1",
+    password: "$2b$10$ZrXXjspsIEcv5zEOA.7D.OQ3gY4b1IFN1ZGiCUvbVYq.MADIvs37e", // Admin@12345
+    adress: "HavenKey Operations HQ, Islamabad",
+    postal_code: "44000",
+    role: "admin",
+    isVerified: true,
+    created_at: "2026-01-01T08:00:00Z",
+    createdAt: "2026-01-01T08:00:00Z",
+  },
+  {
+    id: "usr-04",
     fullname: "Admin Operator",
     name: "Admin Operator",
     email: "admin@havenkey.pk",
