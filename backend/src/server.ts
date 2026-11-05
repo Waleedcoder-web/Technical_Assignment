@@ -498,36 +498,93 @@ app.post("/api/properties", async (req: Request, res: Response) => {
 });
 
 app.put("/api/properties/:id", async (req: Request, res: Response) => {
-  const index = properties.findIndex((p) => p.id === req.params.id);
-  if (index === -1) {
-    return res.status(404).json({ success: false, message: "Property not found" });
-  }
+  const { id } = req.params;
+  const {
+    title,
+    description,
+    property_type,
+    category,
+    listing_type,
+    transactionType,
+    price,
+    area_value,
+    area_unit,
+    bedroom,
+    beds,
+    bathroom,
+    baths,
+    location,
+    address,
+    status,
+    image_url,
+    imageUrl,
+    images,
+  } = req.body;
 
-  properties[index] = {
-    ...properties[index],
-    ...req.body,
+  // Clean payload containing only valid Supabase columns
+  const updatePayload: Record<string, any> = {
     updated_at: new Date().toISOString(),
   };
 
-  try {
-    await supabase.from("properties").update(req.body).eq("id", req.params.id);
-  } catch {
-    // fallback
+  if (title !== undefined) updatePayload.title = title;
+  if (description !== undefined) updatePayload.description = description;
+  if (property_type !== undefined || category !== undefined) updatePayload.property_type = property_type || category;
+  if (listing_type !== undefined || transactionType !== undefined) updatePayload.listing_type = listing_type || transactionType;
+  if (price !== undefined) updatePayload.price = Number(price);
+  if (area_value !== undefined) updatePayload.area_value = Number(area_value);
+  if (area_unit !== undefined) updatePayload.area_unit = area_unit;
+  if (bedroom !== undefined || beds !== undefined) updatePayload.bedroom = Number(bedroom ?? beds);
+  if (bathroom !== undefined || baths !== undefined) updatePayload.bathroom = Number(bathroom ?? baths);
+  if (location !== undefined) updatePayload.location = location;
+  if (address !== undefined) updatePayload.address = address;
+  if (status !== undefined) updatePayload.status = status;
+  if (images !== undefined) {
+    updatePayload.images = images;
+    updatePayload.image_url = images[0] || image_url || imageUrl || "";
+  } else if (image_url !== undefined || imageUrl !== undefined) {
+    updatePayload.image_url = image_url || imageUrl;
   }
 
-  res.json({ success: true, message: "Property updated successfully", data: properties[index] });
+  // Update in Supabase
+  try {
+    const { error } = await supabase.from("properties").update(updatePayload).eq("id", id);
+    if (error) {
+      console.warn("Supabase update warning:", error.message);
+    }
+  } catch (err: any) {
+    console.warn("Supabase update connection warning:", err.message);
+  }
+
+  // Update in-memory
+  const index = properties.findIndex((p) => p.id === id);
+  if (index !== -1) {
+    properties[index] = {
+      ...properties[index],
+      ...req.body,
+      ...updatePayload,
+    };
+  }
+
+  res.json({ success: true, message: "Property updated successfully", data: properties[index] || updatePayload });
 });
 
 app.delete("/api/properties/:id", async (req: Request, res: Response) => {
-  const index = properties.findIndex((p) => p.id === req.params.id);
-  if (index !== -1) {
-    properties.splice(index, 1);
+  const { id } = req.params;
+
+  // Delete from Supabase
+  try {
+    const { error } = await supabase.from("properties").delete().eq("id", id);
+    if (error) {
+      console.warn("Supabase delete warning:", error.message);
+    }
+  } catch (err: any) {
+    console.warn("Supabase delete connection warning:", err.message);
   }
 
-  try {
-    await supabase.from("properties").delete().eq("id", req.params.id);
-  } catch {
-    // fallback
+  // Delete from in-memory
+  const index = properties.findIndex((p) => p.id === id);
+  if (index !== -1) {
+    properties.splice(index, 1);
   }
 
   res.json({ success: true, message: "Property removed successfully" });

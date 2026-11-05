@@ -232,6 +232,17 @@ export default function AdminDashboardPage() {
       }
     }
 
+    // Fetch properties directly from backend API / Supabase
+    fetch("http://localhost:5000/api/properties")
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setProperties(json.data);
+          saveStoredProperties(json.data);
+        }
+      })
+      .catch(() => {});
+
     const handleSync = () => {
       setProperties(getStoredProperties());
     };
@@ -507,13 +518,21 @@ export default function AdminDashboardPage() {
   };
 
   // Delete Handler
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!propertyToDelete) return;
-    const updated = properties.filter((p) => p.id !== propertyToDelete.id);
+    const target = propertyToDelete;
+    const updated = properties.filter((p) => p.id !== target.id);
     setProperties(updated);
     saveStoredProperties(updated);
-    showToast(`Property "${propertyToDelete.title}" has been deleted.`);
+    showToast(`Property "${target.title}" has been deleted.`);
     setPropertyToDelete(null);
+
+    // Synchronize delete with backend API and Supabase
+    try {
+      await fetch(`http://localhost:5000/api/properties/${target.id}`, {
+        method: "DELETE",
+      });
+    } catch {}
   };
 
   // KYC Actions

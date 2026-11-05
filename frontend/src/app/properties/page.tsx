@@ -5,7 +5,7 @@ import Link from "next/link";
 import Navbar from "@/components/layout/navbar";
 import Footer from "@/components/layout/footer";
 import PropertyCard from "@/components/ui/property-card";
-import { mockProperties, Property, getStoredProperties } from "@/lib/mock-data";
+import { mockProperties, Property, getStoredProperties, saveStoredProperties } from "@/lib/mock-data";
 
 export default function PropertiesPage() {
   const [propertiesList, setPropertiesList] = useState<Property[]>(mockProperties);
@@ -18,6 +18,18 @@ export default function PropertiesPage() {
 
   useEffect(() => {
     setPropertiesList(getStoredProperties());
+
+    // Fetch properties directly from backend API / Supabase
+    fetch("http://localhost:5000/api/properties")
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setPropertiesList(json.data);
+          saveStoredProperties(json.data);
+        }
+      })
+      .catch(() => {});
+
     const handler = () => setPropertiesList(getStoredProperties());
     window.addEventListener("havenkey_properties_change", handler);
     return () => window.removeEventListener("havenkey_properties_change", handler);
