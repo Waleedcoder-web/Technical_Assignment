@@ -65,14 +65,12 @@ export default function Navbar() {
   const baseLinks = [
     { label: "Home", href: "/" },
     { label: "Properties", href: "/properties" },
+    { label: "Admin Panel", href: "/admin/dashboard" },
     { label: "AI Assistant", href: "/ai-assistant" },
   ];
 
-  // Dashboard link ONLY shown when user is logged in AND role is admin
-  const navLinks =
-    user?.role === "admin"
-      ? [...baseLinks, { label: "Dashboard", href: "/admin/dashboard" }]
-      : baseLinks;
+  // Dashboard link if admin
+  const navLinks = baseLinks;
 
   return (
     <header className="fixed top-0 left-0 w-full z-50 bg-[#f8f9fb]/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] border-b border-[#e7e8ea]">
@@ -117,11 +115,11 @@ export default function Navbar() {
         {/* Right side actions */}
         <div className="flex items-center gap-3">
           <Link
-            href="/properties"
-            className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 bg-[#172b4d] text-white text-xs font-semibold rounded-lg hover:bg-[#001637] transition-all shadow-sm"
+            href="/admin/dashboard?add=true"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#076a64] hover:bg-[#00201e] text-white text-xs font-bold rounded-lg transition-all shadow-sm"
           >
-            <span className="material-symbols-outlined text-[16px]">add</span>
-            <span>List Property</span>
+            <span className="material-symbols-outlined text-[16px]">add_photo_alternate</span>
+            <span>+ Upload Property</span>
           </Link>
 
           {/* User state: Show avatar circle ONLY when logged in */}

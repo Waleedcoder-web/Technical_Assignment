@@ -84,9 +84,18 @@ export default function PropertiesPage() {
               </p>
             </div>
 
-            <div className="flex items-center gap-2 text-xs font-semibold px-3 py-1.5 bg-white border border-[#e7e8ea] rounded-lg shadow-sm">
-              <span className="material-symbols-outlined text-[16px] text-[#076a64]">verified</span>
-              <span>Showing {filteredProperties.length} Properties</span>
+            <div className="flex items-center gap-3">
+              <Link
+                href="/admin/dashboard?add=true"
+                className="px-4 py-2.5 bg-[#076a64] hover:bg-[#00201e] text-white text-xs font-bold rounded-lg transition-all shadow-sm flex items-center gap-1.5"
+              >
+                <span className="material-symbols-outlined text-[18px]">add_photo_alternate</span>
+                <span>+ Upload / Add Property</span>
+              </Link>
+              <div className="hidden sm:flex items-center gap-2 text-xs font-semibold px-3 py-2 bg-white border border-[#e7e8ea] rounded-lg shadow-sm">
+                <span className="material-symbols-outlined text-[16px] text-[#076a64]">verified</span>
+                <span>{filteredProperties.length} Properties</span>
+              </div>
             </div>
           </div>
 

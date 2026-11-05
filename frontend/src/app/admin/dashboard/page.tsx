@@ -217,6 +217,21 @@ export default function AdminDashboardPage() {
     const loaded = getStoredProperties();
     setProperties(loaded);
 
+    // Auto-open Add Property modal if URL has ?add=true
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("add") === "true") {
+        setEditingPropertyId(null);
+        setFormData({
+          ...INITIAL_FORM,
+          imageUrl: "",
+          images: [],
+        });
+        setFormErrors({});
+        setIsModalOpen(true);
+      }
+    }
+
     const handleSync = () => {
       setProperties(getStoredProperties());
     };
