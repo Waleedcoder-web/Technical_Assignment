@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Navbar from "@/components/layout/navbar";
 import Footer from "@/components/layout/footer";
@@ -19,6 +19,17 @@ export default function LoginPage() {
   const [errors, setErrors] = useState<LoginErrors>({});
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [infoMsg, setInfoMsg] = useState("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("reason") === "admin_required" || params.get("redirect")?.includes("admin")) {
+        setRole("admin");
+        setInfoMsg("Administrator Sign-In Required: Please sign in with your Admin account to access the Admin Panel.");
+      }
+    }
+  }, []);
 
   const validate = (): boolean => {
     const errs: LoginErrors = {};
@@ -255,6 +266,14 @@ export default function LoginPage() {
                     </div>
                   */}
                 </div>
+
+                {/* Info / Redirection Notice */}
+                {infoMsg && (
+                  <div className="p-3 bg-[#e6f7f5] border border-[#a1f1e9] text-[#076a64] rounded-lg text-xs flex items-center gap-2 font-semibold">
+                    <span className="material-symbols-outlined text-[18px]">lock</span>
+                    <span>{infoMsg}</span>
+                  </div>
+                )}
 
                 {/* Error Banner */}
                 {errorMsg && (

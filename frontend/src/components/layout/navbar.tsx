@@ -65,12 +65,14 @@ export default function Navbar() {
   const baseLinks = [
     { label: "Home", href: "/" },
     { label: "Properties", href: "/properties" },
-    { label: "Admin Panel", href: "/admin/dashboard" },
     { label: "AI Assistant", href: "/ai-assistant" },
   ];
 
-  // Dashboard link if admin
-  const navLinks = baseLinks;
+  // Admin link ONLY shown when user is logged in AND role is admin
+  const navLinks =
+    user?.role === "admin"
+      ? [...baseLinks, { label: "Admin Panel", href: "/admin/dashboard" }]
+      : baseLinks;
 
   return (
     <header className="fixed top-0 left-0 w-full z-50 bg-[#f8f9fb]/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] border-b border-[#e7e8ea]">

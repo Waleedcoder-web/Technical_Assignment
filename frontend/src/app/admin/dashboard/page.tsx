@@ -81,6 +81,7 @@ const INITIAL_FORM: PropertyFormData = {
 };
 
 export default function AdminDashboardPage() {
+  const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const [activeTab, setActiveTab] = useState<"properties" | "kyc" | "escrow">("properties");
   const [properties, setProperties] = useState<Property[]>(mockProperties);
   const [kycList, setKycList] = useState(mockKycQueue);
@@ -212,8 +213,29 @@ export default function AdminDashboardPage() {
     showToast("Primary cover image set!");
   };
 
-  // Synchronize properties with localStorage
+  // Synchronize properties with localStorage & Verify Admin Authorization
   useEffect(() => {
+    // 0. Security Guard: Verify Admin Sign-In
+    try {
+      const stored = typeof window !== "undefined" ? localStorage.getItem("havenkey_user") : null;
+      if (!stored) {
+        setIsAuthorized(false);
+        window.location.href = "/login?redirect=/admin/dashboard&reason=admin_required";
+        return;
+      }
+      const parsed = JSON.parse(stored);
+      if (parsed.role !== "admin") {
+        setIsAuthorized(false);
+        window.location.href = "/login?redirect=/admin/dashboard&reason=admin_required";
+        return;
+      }
+      setIsAuthorized(true);
+    } catch {
+      setIsAuthorized(false);
+      window.location.href = "/login?redirect=/admin/dashboard&reason=admin_required";
+      return;
+    }
+
     const loaded = getStoredProperties();
     setProperties(loaded);
 
@@ -550,6 +572,28 @@ export default function AdminDashboardPage() {
     );
     showToast(`KYC request ${id} flagged as rejected.`);
   };
+
+  // Security Barrier: Do not render admin console until authorized
+  if (isAuthorized === null || isAuthorized === false) {
+    return (
+      <div className="min-h-screen bg-[#001637] flex flex-col items-center justify-center p-6 text-white text-center">
+        <div className="w-16 h-16 rounded-2xl bg-white/10 flex items-center justify-center mb-4 ring-2 ring-[#a1f1e9] shadow-xl animate-pulse">
+          <span className="material-symbols-outlined text-[32px] text-[#a1f1e9]">lock</span>
+        </div>
+        <h2 className="text-xl font-bold font-plus-jakarta mb-2">Restricted Access: Admin Sign In Required</h2>
+        <p className="text-xs text-[#8093bb] max-w-md mb-6 leading-relaxed">
+          The Admin Operations Console is restricted to verified HavenKey administrators. You must sign in with an Administrator account to view or manage platform assets.
+        </p>
+        <Link
+          href="/login?redirect=/admin/dashboard&reason=admin_required"
+          className="px-6 py-2.5 bg-[#076a64] hover:bg-[#a1f1e9] hover:text-[#001637] text-white font-bold text-xs rounded-xl transition-all shadow-lg flex items-center gap-2"
+        >
+          <span className="material-symbols-outlined text-[18px]">login</span>
+          <span>Sign In as Admin</span>
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#f8f9fb] flex flex-col font-inter">
