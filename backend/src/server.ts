@@ -404,6 +404,7 @@ app.post("/api/properties", async (req: Request, res: Response) => {
     transactionType,
     price,
     area_value,
+    area,
     area_unit,
     bedroom,
     beds,
@@ -429,6 +430,10 @@ app.post("/api/properties", async (req: Request, res: Response) => {
     : [];
 
   const primaryImage = resolvedImages[0] || image_url || imageUrl || "";
+  const numericPrice = typeof price === "number" ? price : Number(String(price || 0).replace(/[^0-9.]/g, "")) || 0;
+  const numericArea = typeof area_value === "number" ? area_value : Number(String(area_value || area || 10).replace(/[^0-9.]/g, "")) || 10;
+  const numBedrooms = Number(bedroom ?? beds ?? 0) || 0;
+  const numBathrooms = Number(bathroom ?? baths ?? 0) || 0;
 
   const newProperty: Property = {
     id: `prop-${Date.now()}`,
@@ -437,11 +442,11 @@ app.post("/api/properties", async (req: Request, res: Response) => {
     description: description || `${title} located in ${location}.`,
     property_type: property_type || category || "apartments",
     listing_type: listing_type || transactionType || "rent",
-    price: Number(price),
-    area_value: Number(area_value) || 10,
+    price: numericPrice,
+    area_value: numericArea,
     area_unit: area_unit || "Marla",
-    bedroom: Number(bedroom || beds || 0),
-    bathroom: Number(bathroom || baths || 0),
+    bedroom: numBedrooms,
+    bathroom: numBathrooms,
     location,
     address: address || location,
     status: status || "available",
@@ -453,11 +458,11 @@ app.post("/api/properties", async (req: Request, res: Response) => {
     // UI compatibility aliases
     category: property_type || category || "apartments",
     transactionType: listing_type || transactionType || "rent",
-    priceFormatted: `PKR ${Number(price).toLocaleString()}`,
+    priceFormatted: `PKR ${numericPrice.toLocaleString()}`,
     pricePeriod: (listing_type || transactionType) === "sale" ? undefined : "/ mo",
-    beds: Number(bedroom || beds || 0),
-    baths: Number(bathroom || baths || 0),
-    size: `${area_value || 10} ${area_unit || "Marla"}`,
+    beds: numBedrooms,
+    baths: numBathrooms,
+    size: `${numericArea} ${area_unit || "Marla"}`,
     city: location,
     verified: true,
     featured: false,
@@ -465,9 +470,27 @@ app.post("/api/properties", async (req: Request, res: Response) => {
   };
 
   try {
-    const isValidUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(newProperty.owner_id || "");
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let resolvedOwnerId = isUuid.test(newProperty.owner_id || "") ? newProperty.owner_id : null;
+
+    // If owner_id is not a valid UUID, look up the administrator's UUID in Supabase users
+    if (!resolvedOwnerId) {
+      const { data: adminUser } = await supabase
+        .from("users")
+        .select("id")
+        .or("role.eq.admin,email.eq.admin@gmail.com")
+        .limit(1)
+        .maybeSingle();
+
+      if (adminUser?.id) {
+        resolvedOwnerId = adminUser.id;
+      }
+    }
+
+    newProperty.owner_id = resolvedOwnerId || undefined;
+
     const { data, error } = await supabase.from("properties").insert([{
-      owner_id: isValidUuid ? newProperty.owner_id : null,
+      owner_id: resolvedOwnerId,
       title: newProperty.title,
       description: newProperty.description,
       property_type: newProperty.property_type,

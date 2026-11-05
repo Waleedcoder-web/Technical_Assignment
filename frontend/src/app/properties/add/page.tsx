@@ -143,9 +143,18 @@ export default function AddPropertyPage() {
     const numArea = Number(areaValue) || 10;
     const formattedPrice = `PKR ${numPrice.toLocaleString()}`;
 
+    let currentOwnerId: string | undefined;
+    try {
+      const stored = typeof window !== "undefined" ? localStorage.getItem("havenkey_user") : null;
+      if (stored) {
+        const u = JSON.parse(stored);
+        if (u.id) currentOwnerId = u.id;
+      }
+    } catch {}
+
     const newProperty: Property = {
       id: `prop-${Date.now()}`,
-      owner_id: "usr-admin-01",
+      owner_id: currentOwnerId || "62844602-775a-4f74-a680-e2b51b2c7776",
       title: title.trim(),
       description: description.trim() || `${title} located in ${location}.`,
       property_type: propertyType,

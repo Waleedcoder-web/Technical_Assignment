@@ -476,9 +476,18 @@ export default function AdminDashboardPage() {
         .replace(/^-+|-+$/g, "");
       const newId = `${slug}-${Date.now().toString().slice(-4)}`;
 
+      let currentOwnerId: string | undefined;
+      try {
+        const stored = typeof window !== "undefined" ? localStorage.getItem("havenkey_user") : null;
+        if (stored) {
+          const u = JSON.parse(stored);
+          if (u.id) currentOwnerId = u.id;
+        }
+      } catch {}
+
       const newProperty: Property = {
         id: newId,
-        owner_id: formData.owner_id || "usr-admin-01",
+        owner_id: currentOwnerId || "62844602-775a-4f74-a680-e2b51b2c7776",
         title: formData.title.trim(),
         description: formData.description.trim() || `${formData.title} located in ${formData.location}.`,
         property_type: formData.property_type,
