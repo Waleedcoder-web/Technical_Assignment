@@ -13,6 +13,8 @@ interface ChatMessage {
   text: string;
   timestamp: string;
   properties?: typeof mockProperties;
+  sources?: { filename: string; similarity: number }[];
+  isRAG?: boolean;
 }
 
 export default function AiAssistantPage() {
@@ -20,58 +22,122 @@ export default function AiAssistantPage() {
     {
       id: "1",
       sender: "ai",
-      text: "Hello! I'm your HavenKey AI Real Estate Advisor. I can search through verified properties, calculate tenancy escrow deposits, compare cap rates across Lahore, Islamabad, and Karachi, and review lease compliance.",
+      text: "Hello! I'm your HavenKey AI Real Estate Advisor. I can search through verified properties across Pakistan or answer your questions about HavenKey company policies, tenancy escrow, biometric deeds, and agreement rules.",
       timestamp: "11:30 AM",
     },
     {
       id: "2",
       sender: "user",
-      text: "How do I list or browse newly verified properties on HavenKey?",
+      text: "How does the biometric tenant escrow work?",
       timestamp: "11:31 AM",
     },
     {
       id: "3",
       sender: "ai",
-      text: "You can manage, create, and publish verified properties via the Admin Dashboard. All listings are saved with verified title deeds, biometric seller authentication, and real-time database persistence.",
+      text: "Based on HavenKey's official company documentation:\n\nAll rental security deposits must be submitted via verified bank escrow. Deposits are held securely until lease termination inspection. If no damages are reported within 7 business days, the entire deposit is refunded to the tenant account.",
       timestamp: "11:31 AM",
+      sources: [{ filename: "HavenKey_Tenancy_And_Escrow_Policy.pdf", similarity: 0.89 }],
+      isRAG: true,
     },
   ]);
 
   const [inputMessage, setInputMessage] = useState("");
   const [isTyping, setIsTyping] = useState(false);
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputMessage.trim()) return;
+    const query = inputMessage.trim();
+    if (!query) return;
 
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
       sender: "user",
-      text: inputMessage,
-      timestamp: "Just now",
+      text: query,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     };
 
     setMessages((prev) => [...prev, userMsg]);
     setInputMessage("");
     setIsTyping(true);
 
-    setTimeout(() => {
-      setIsTyping(false);
-      const aiReply: ChatMessage = {
+    try {
+      // Differentiate between Property Search (DB queries) vs Company Information (RAG)
+      const isPropertyQuery = /\b(find|search|house|villa|apartment|flat|plot|room|marla|kanal|bed|bedroom|bath|rent|buy|sale|pkr|price|budget|lahore|islamabad|karachi|sialkot|rawalpindi)\b/i.test(query);
+
+      if (isPropertyQuery) {
+        // Query properties database endpoint
+        let propertyList: any[] = [];
+        try {
+          const res = await fetch("http://localhost:5000/api/properties");
+          if (res.ok) {
+            const json = await res.json();
+            propertyList = json.data || json || [];
+          }
+        } catch {
+          propertyList = mockProperties;
+        }
+
+        const qLower = query.toLowerCase();
+        const filtered = propertyList.filter((p: any) => {
+          return (
+            (p.title && p.title.toLowerCase().includes(qLower)) ||
+            (p.location && p.location.toLowerCase().includes(qLower)) ||
+            (p.city && p.city.toLowerCase().includes(qLower)) ||
+            (p.property_type && qLower.includes(p.property_type.toLowerCase()))
+          );
+        });
+
+        const matchedProps = filtered.length > 0 ? filtered.slice(0, 4) : propertyList.slice(0, 2);
+
+        const aiReply: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          sender: "ai",
+          text: `Here are the matching verified property listings based on your search for "${query}":`,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          properties: matchedProps,
+        };
+        setMessages((prev) => [...prev, aiReply]);
+      } else {
+        // Company Information Assistant (RAG Pipeline)
+        const res = await fetch("/api/ai/company-rag", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: query }),
+        });
+
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+          throw new Error(json.message || "Failed to retrieve company documentation.");
+        }
+
+        const aiReply: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          sender: "ai",
+          text: json.answer,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          sources: json.sources,
+          isRAG: true,
+        };
+        setMessages((prev) => [...prev, aiReply]);
+      }
+    } catch (err: any) {
+      const errorReply: ChatMessage = {
         id: (Date.now() + 1).toString(),
         sender: "ai",
-        text: `Here are the matching verified insights based on your query "${userMsg.text}". All title deeds are cross-verified with biometric land registries and legal tenancy compliance.`,
-        timestamp: "Just now",
+        text: `An error occurred: ${err.message}`,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
-      setMessages((prev) => [...prev, aiReply]);
-    }, 1000);
+      setMessages((prev) => [...prev, errorReply]);
+    } finally {
+      setIsTyping(false);
+    }
   };
 
   const promptSuggestions = [
+    "What is the refund timeline for tenant escrow deposits?",
+    "What are HavenKey's landlord dispute resolution rules?",
     "Find 4-Bed villa in DHA Phase 6 under 400k/mo",
-    "Compare rental yield: Clifton Karachi vs DHA Lahore",
-    "What are the stamp duty & registry charges in Islamabad?",
-    "How does the biometric tenant escrow work?",
+    "Show available rental apartments in Lahore",
   ];
 
   return (
@@ -176,7 +242,33 @@ export default function AiAssistantPage() {
                           : "bg-[#f2f4f6] text-[#191c1e] rounded-tl-xs border border-[#e7e8ea]"
                       }`}
                     >
-                      <p>{msg.text}</p>
+                      <p className="whitespace-pre-line">{msg.text}</p>
+
+                      {/* Grounded RAG Sources */}
+                      {msg.sources && msg.sources.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-[#e7e8ea] flex flex-wrap items-center gap-2">
+                          <span className="text-[10px] font-bold text-[#75777f] uppercase flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[13px] text-[#076a64]">
+                              verified
+                            </span>
+                            Verified Knowledge Sources:
+                          </span>
+                          {msg.sources.map((s, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-[#e7e8ea] rounded-lg text-[11px] font-medium text-[#001637] shadow-xs"
+                            >
+                              <span className="material-symbols-outlined text-[14px] text-red-500">
+                                description
+                              </span>
+                              <span>{s.filename}</span>
+                              <span className="px-1.5 py-0.2 bg-[#a1f1e9] text-[#076a64] text-[9px] font-bold rounded-sm">
+                                {(s.similarity * 100).toFixed(0)}% match
+                              </span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
 
                       {/* Embedded Property Cards */}
                       {msg.properties && msg.properties.filter(Boolean).length > 0 && (

@@ -13,4 +13,8 @@ const supabaseKey =
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
+// Server-side admin client using service role key (bypasses RLS strictly on the server)
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseKey;
+export const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
+
 export default supabase;

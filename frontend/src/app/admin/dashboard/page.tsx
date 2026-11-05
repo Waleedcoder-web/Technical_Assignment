@@ -82,10 +82,27 @@ const INITIAL_FORM: PropertyFormData = {
 
 export default function AdminDashboardPage() {
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
-  const [activeTab, setActiveTab] = useState<"properties" | "kyc" | "escrow">("properties");
+  const [activeTab, setActiveTab] = useState<"properties" | "kyc" | "escrow" | "documents">("properties");
   const [properties, setProperties] = useState<Property[]>(mockProperties);
   const [kycList, setKycList] = useState(mockKycQueue);
   const [approvedCount, setApprovedCount] = useState(0);
+
+  // Document Management State (RAG System)
+  interface IndexedDoc {
+    docId: string;
+    sourceKey: string;
+    filename: string;
+    chunkCount: number;
+    createdAt: string;
+  }
+  const [documents, setDocuments] = useState<IndexedDoc[]>([]);
+  const [isLoadingDocs, setIsLoadingDocs] = useState(false);
+  const [isUploadingDoc, setIsUploadingDoc] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [docToDelete, setDocToDelete] = useState<IndexedDoc | null>(null);
+  const [isDeletingDoc, setIsDeletingDoc] = useState(false);
+  const [docSearchQuery, setDocSearchQuery] = useState("");
+  const docFileInputRef = useRef<HTMLInputElement>(null);
 
   // Property Table Filters & Search
   const [searchQuery, setSearchQuery] = useState("");
@@ -109,6 +126,94 @@ export default function AdminDashboardPage() {
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const fetchDocuments = async () => {
+    try {
+      setIsLoadingDocs(true);
+      const res = await fetch("/api/admin/documents");
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        setDocuments(json.data);
+      }
+    } catch (err: any) {
+      console.error("Failed to fetch documents:", err);
+    } finally {
+      setIsLoadingDocs(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "documents") {
+      fetchDocuments();
+    }
+  }, [activeTab]);
+
+  const handleUploadDocument = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validExts = [".pdf", ".txt"];
+    const hasValidExt = validExts.some((ext) => file.name.toLowerCase().endsWith(ext));
+    if (!hasValidExt) {
+      showToast("Invalid file format. Please upload a PDF or TXT file.");
+      if (docFileInputRef.current) docFileInputRef.current.value = "";
+      return;
+    }
+
+    try {
+      setIsUploadingDoc(true);
+      setUploadProgress("Extracting text & computing 384-d embeddings...");
+
+      const fd = new FormData();
+      fd.append("file", file);
+
+      const res = await fetch("/api/admin/documents", {
+        method: "POST",
+        headers: {
+          "x-admin-role": "admin",
+        },
+        body: fd,
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || "Upload failed");
+      }
+
+      showToast(`Successfully indexed "${file.name}" into ${json.data.chunkCount} chunks!`);
+      await fetchDocuments();
+    } catch (err: any) {
+      showToast(`Upload error: ${err.message}`);
+    } finally {
+      setIsUploadingDoc(false);
+      setUploadProgress(null);
+      if (docFileInputRef.current) docFileInputRef.current.value = "";
+    }
+  };
+
+  const handleDeleteDocument = async () => {
+    if (!docToDelete) return;
+    try {
+      setIsDeletingDoc(true);
+      const res = await fetch(`/api/admin/documents?sourceKey=${encodeURIComponent(docToDelete.sourceKey)}`, {
+        method: "DELETE",
+        headers: {
+          "x-admin-role": "admin",
+        },
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || "Failed to delete");
+      }
+      showToast(`Document "${docToDelete.filename}" removed from knowledge base.`);
+      setDocToDelete(null);
+      await fetchDocuments();
+    } catch (err: any) {
+      showToast(`Delete failed: ${err.message}`);
+    } finally {
+      setIsDeletingDoc(false);
+    }
   };
 
   // Convert file from device to Data URL (Base64) for instant rendering and resilient local fallback
@@ -800,6 +905,22 @@ export default function AdminDashboardPage() {
             <span className="material-symbols-outlined text-[18px]">account_balance</span>
             <span>Escrow &amp; Bank Liquidity</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("documents")}
+            className={`pb-3 px-4 text-xs font-bold flex items-center gap-2 border-b-2 transition-all ${
+              activeTab === "documents"
+                ? "border-[#001637] text-[#001637]"
+                : "border-transparent text-[#75777f] hover:text-[#001637]"
+            }`}
+          >
+            <span className="material-symbols-outlined text-[18px]">library_books</span>
+            <span>Knowledge Base (RAG)</span>
+            <span className="px-2 py-0.5 bg-[#edeef0] text-[#001637] rounded-full text-[10px]">
+              {documents.length}
+            </span>
+          </button>
         </div>
 
         {/* =================================================================== */}
@@ -1194,7 +1315,324 @@ export default function AdminDashboardPage() {
             </div>
           </div>
         )}
+
+        {/* =================================================================== */}
+        {/* TAB 4: COMPANY KNOWLEDGE BASE & RAG DOCUMENTS                       */}
+        {/* =================================================================== */}
+        {activeTab === "documents" && (
+          <div className="space-y-6 mb-8">
+            {/* Header & Quick Stats */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white p-4 rounded-xl border border-[#e7e8ea] shadow-xs">
+                <span className="text-[11px] text-[#75777f] uppercase font-semibold">Indexed Documents</span>
+                <p className="text-xl font-bold text-[#001637] font-plus-jakarta mt-1">
+                  {documents.length}
+                </p>
+                <span className="text-[10px] text-[#076a64] font-semibold flex items-center gap-0.5 mt-1">
+                  <span className="material-symbols-outlined text-[12px]">check_circle</span> Active in RAG
+                </span>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-[#e7e8ea] shadow-xs">
+                <span className="text-[11px] text-[#75777f] uppercase font-semibold">Total Vector Chunks</span>
+                <p className="text-xl font-bold text-[#001637] font-plus-jakarta mt-1">
+                  {documents.reduce((acc, d) => acc + (d.chunkCount || 0), 0)}
+                </p>
+                <span className="text-[10px] text-[#75777f] font-semibold flex items-center gap-0.5 mt-1">
+                  <span className="material-symbols-outlined text-[12px]">layers</span> 180–220 tokens/chunk
+                </span>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-[#e7e8ea] shadow-xs">
+                <span className="text-[11px] text-[#75777f] uppercase font-semibold">Embedding Model</span>
+                <p className="text-sm font-bold text-[#001637] font-plus-jakarta mt-1.5 truncate">
+                  all-MiniLM-L6-v2
+                </p>
+                <span className="text-[10px] text-[#076a64] font-semibold flex items-center gap-0.5 mt-1">
+                  <span className="material-symbols-outlined text-[12px]">memory</span> 384-Dim Local ONNX
+                </span>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-[#e7e8ea] shadow-xs">
+                <span className="text-[11px] text-[#75777f] uppercase font-semibold">Vector Storage</span>
+                <p className="text-sm font-bold text-[#001637] font-plus-jakarta mt-1.5 truncate">
+                  Supabase pgvector
+                </p>
+                <span className="text-[10px] text-[#076a64] font-semibold flex items-center gap-0.5 mt-1">
+                  <span className="material-symbols-outlined text-[12px]">database</span> HNSW Cosine Index
+                </span>
+              </div>
+            </div>
+
+            {/* Document Upload Card */}
+            <div className="bg-white p-6 rounded-2xl border border-[#e7e8ea] shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                <div>
+                  <h4 className="text-base font-bold text-[#001637] font-plus-jakarta flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[#076a64]">upload_file</span>
+                    Upload Company Document
+                  </h4>
+                  <p className="text-xs text-[#44474e] mt-0.5">
+                    Upload official company policies, terms &amp; conditions, tenancy rules, or escrow guidelines (PDF or TXT, max 15MB).
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={docFileInputRef}
+                    type="file"
+                    accept=".pdf,.txt,text/plain,application/pdf"
+                    onChange={handleUploadDocument}
+                    disabled={isUploadingDoc}
+                    className="hidden"
+                    id="rag-doc-upload"
+                  />
+                  <label
+                    htmlFor="rag-doc-upload"
+                    className={`px-4 py-2 bg-[#076a64] hover:bg-[#00201e] text-white text-xs font-semibold rounded-xl transition-all shadow-sm flex items-center gap-2 cursor-pointer ${
+                      isUploadingDoc ? "opacity-50 pointer-events-none" : ""
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">add</span>
+                    <span>{isUploadingDoc ? "Indexing Document..." : "Select Document from Device"}</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Upload Progress Bar */}
+              {isUploadingDoc && (
+                <div className="p-4 bg-[#f2f4f6] rounded-xl border border-[#e7e8ea] mb-2 flex items-center gap-3">
+                  <span className="material-symbols-outlined text-[20px] text-[#076a64] animate-spin">
+                    progress_activity
+                  </span>
+                  <div className="flex-1">
+                    <div className="flex justify-between text-xs font-semibold text-[#001637] mb-1">
+                      <span>{uploadProgress || "Processing document..."}</span>
+                      <span className="text-[#076a64]">Tokenizing &amp; Computing Embeddings</span>
+                    </div>
+                    <div className="w-full h-1.5 bg-[#e7e8ea] rounded-full overflow-hidden">
+                      <div className="h-full bg-[#076a64] animate-pulse w-3/4" />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Document Listing Table */}
+            <div className="bg-white rounded-2xl border border-[#e7e8ea] shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-[#e7e8ea] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-bold text-[#001637] font-plus-jakarta">
+                    Knowledge Base Documents ({documents.length})
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={fetchDocuments}
+                    disabled={isLoadingDocs}
+                    className="p-1 text-[#75777f] hover:text-[#001637] rounded-lg transition-colors"
+                    title="Refresh document list"
+                  >
+                    <span className={`material-symbols-outlined text-[16px] ${isLoadingDocs ? "animate-spin" : ""}`}>
+                      refresh
+                    </span>
+                  </button>
+                </div>
+
+                <div className="relative w-full sm:w-64">
+                  <span className="material-symbols-outlined absolute left-3 top-2.5 text-[16px] text-[#75777f]">
+                    search
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="Search documents..."
+                    value={docSearchQuery}
+                    onChange={(e) => setDocSearchQuery(e.target.value)}
+                    className="w-full h-9 pl-9 pr-3 text-xs bg-[#f8f9fb] rounded-lg border border-[#e7e8ea] focus:outline-none focus:border-[#076a64]"
+                  />
+                </div>
+              </div>
+
+              {isLoadingDocs ? (
+                <div className="p-12 text-center text-xs text-[#75777f] flex flex-col items-center gap-2">
+                  <span className="material-symbols-outlined text-[24px] text-[#076a64] animate-spin">
+                    progress_activity
+                  </span>
+                  Loading knowledge base index...
+                </div>
+              ) : documents.length === 0 ? (
+                <div className="p-12 text-center">
+                  <div className="w-12 h-12 rounded-full bg-[#f2f4f6] text-[#75777f] flex items-center justify-center mx-auto mb-3">
+                    <span className="material-symbols-outlined text-[24px]">folder_open</span>
+                  </div>
+                  <h5 className="text-sm font-bold text-[#001637]">No documents uploaded yet</h5>
+                  <p className="text-xs text-[#75777f] max-w-sm mx-auto mt-1 mb-4">
+                    Upload your first company policy or tenancy document to activate the AI knowledge retrieval pipeline.
+                  </p>
+                  <label
+                    htmlFor="rag-doc-upload"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-[#001637] hover:bg-[#172b4d] text-white text-xs font-semibold rounded-xl cursor-pointer shadow-xs transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">upload_file</span>
+                    Upload First Document
+                  </label>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#f8f9fb] text-[#75777f] uppercase font-semibold border-b border-[#e7e8ea]">
+                      <tr>
+                        <th className="px-6 py-3">Document</th>
+                        <th className="px-4 py-3">Document ID</th>
+                        <th className="px-4 py-3">Chunks</th>
+                        <th className="px-4 py-3">Indexed Date</th>
+                        <th className="px-4 py-3">Status</th>
+                        <th className="px-6 py-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#e7e8ea]">
+                      {documents
+                        .filter((d) =>
+                          d.filename.toLowerCase().includes(docSearchQuery.toLowerCase()) ||
+                          d.docId.toLowerCase().includes(docSearchQuery.toLowerCase())
+                        )
+                        .map((doc) => {
+                          const isPdf = doc.filename.toLowerCase().endsWith(".pdf");
+                          return (
+                            <tr key={doc.sourceKey} className="hover:bg-[#f8f9fb] transition-colors">
+                              <td className="px-6 py-4">
+                                <div className="flex items-center gap-3">
+                                  <div
+                                    className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                                      isPdf
+                                        ? "bg-red-50 text-red-600"
+                                        : "bg-blue-50 text-blue-600"
+                                    }`}
+                                  >
+                                    <span className="material-symbols-outlined text-[20px]">
+                                      {isPdf ? "picture_as_pdf" : "description"}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <p className="font-semibold text-[#001637] text-xs">
+                                      {doc.filename}
+                                    </p>
+                                    <span className="text-[10px] text-[#75777f]">
+                                      {isPdf ? "Portable Document Format (PDF)" : "Plain Text Document (TXT)"}
+                                    </span>
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td className="px-4 py-4 font-mono text-[11px] text-[#75777f]">
+                                <span className="px-2 py-0.5 bg-[#edeef0] rounded-md">
+                                  {doc.docId.slice(0, 8)}...
+                                </span>
+                              </td>
+
+                              <td className="px-4 py-4">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#f2f4f6] text-[#001637] font-bold rounded-lg text-xs">
+                                  <span className="material-symbols-outlined text-[14px] text-[#076a64]">
+                                    layers
+                                  </span>
+                                  {doc.chunkCount} {doc.chunkCount === 1 ? "chunk" : "chunks"}
+                                </span>
+                              </td>
+
+                              <td className="px-4 py-4 text-[#75777f] text-xs">
+                                {doc.createdAt
+                                  ? new Date(doc.createdAt).toLocaleDateString("en-PK", {
+                                      month: "short",
+                                      day: "numeric",
+                                      year: "numeric",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })
+                                  : "Recently"}
+                              </td>
+
+                              <td className="px-4 py-4">
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-[#a1f1e9] text-[#076a64] text-[10px] font-bold rounded-full uppercase">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-[#076a64]" />
+                                  Indexed
+                                </span>
+                              </td>
+
+                              <td className="px-6 py-4 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => setDocToDelete(doc)}
+                                  className="px-3 py-1.5 text-xs text-red-600 hover:text-white hover:bg-red-600 border border-red-200 rounded-lg transition-all inline-flex items-center gap-1 font-semibold"
+                                >
+                                  <span className="material-symbols-outlined text-[14px]">delete</span>
+                                  Delete
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </main>
+
+      {/* =================================================================== */}
+      {/* MODAL: DELETE DOCUMENT CONFIRMATION                                 */}
+      {/* =================================================================== */}
+      {docToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 border border-[#e7e8ea] shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4">
+              <span className="material-symbols-outlined text-[28px]">delete_forever</span>
+            </div>
+
+            <h3 className="text-base font-bold text-[#001637] text-center font-plus-jakarta">
+              Delete Document from Knowledge Base?
+            </h3>
+
+            <p className="text-xs text-[#44474e] text-center mt-2 leading-relaxed">
+              Are you sure you want to permanently delete{" "}
+              <strong className="text-[#001637]">"{docToDelete.filename}"</strong>?
+              <br />
+              All <strong className="text-red-600">{docToDelete.chunkCount} vector chunks</strong> and embeddings will be immediately purged from Supabase.
+            </p>
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDocToDelete(null)}
+                disabled={isDeletingDoc}
+                className="px-4 py-2 bg-white text-[#44474e] hover:text-[#001637] border border-[#e7e8ea] text-xs font-semibold rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteDocument}
+                disabled={isDeletingDoc}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-xl transition-colors shadow-sm flex items-center gap-1.5"
+              >
+                {isDeletingDoc ? (
+                  <>
+                    <span className="material-symbols-outlined text-[16px] animate-spin">
+                      progress_activity
+                    </span>
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-[16px]">delete</span>
+                    Confirm Delete
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* =================================================================== */}
       {/* MODAL: ADD / EDIT PROPERTY FORM                                     */}
