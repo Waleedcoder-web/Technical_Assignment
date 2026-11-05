@@ -2,7 +2,7 @@
 # HavenKey Frontend Dockerfile (Next.js 16 + Tailwind CSS)
 # =====================================================================
 
-FROM node:22-alpine AS builder
+FROM public.ecr.aws/docker/library/node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -24,7 +24,7 @@ ENV NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_EieSlOPQetQvRD6igkpppA_D
 RUN npm run build
 
 # Stage 2: Production Runner
-FROM node:22-alpine AS runner
+FROM public.ecr.aws/docker/library/node:22-alpine AS runner
 
 WORKDIR /app
 

@@ -3,7 +3,7 @@
 # =====================================================================
 
 # Stage 1: Build TypeScript source code
-FROM node:22-alpine AS builder
+FROM public.ecr.aws/docker/library/node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -21,7 +21,7 @@ COPY src ./src
 RUN npm run build
 
 # Stage 2: Minimal Production Runtime
-FROM node:22-alpine AS runner
+FROM public.ecr.aws/docker/library/node:22-alpine AS runner
 
 WORKDIR /app
 
