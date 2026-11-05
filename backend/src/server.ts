@@ -428,7 +428,7 @@ app.post("/api/properties", async (req: Request, res: Response) => {
     ? [image_url || imageUrl]
     : [];
 
-  const primaryImage = resolvedImages[0] || image_url || imageUrl || "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80";
+  const primaryImage = resolvedImages[0] || image_url || imageUrl || "";
 
   const newProperty: Property = {
     id: `prop-${Date.now()}`,

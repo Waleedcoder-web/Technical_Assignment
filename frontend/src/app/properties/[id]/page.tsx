@@ -4,7 +4,7 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import Navbar from "@/components/layout/navbar";
 import Footer from "@/components/layout/footer";
-import { Property, getStoredProperties } from "@/lib/mock-data";
+import { Property, getStoredProperties, DEFAULT_PROPERTY_PLACEHOLDER } from "@/lib/mock-data";
 
 export default function PropertyDetailPage({
   params,
@@ -83,7 +83,7 @@ export default function PropertyDetailPage({
   const areaDisplay = property.size || `${property.area_value ?? 10} ${property.area_unit ?? "Marla"}`;
   const priceDisplay = property.priceFormatted || `PKR ${Number(property.price).toLocaleString()}`;
   const pricePeriod = property.pricePeriod || (transaction === "rent" ? "/ mo" : "");
-  const heroImage = property.imageUrl || property.image_url || "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80";
+  const heroImage = property.images?.[0] || property.imageUrl || property.image_url || DEFAULT_PROPERTY_PLACEHOLDER;
   const landlordName = property.landlord?.name || "Verified Landlord";
   const landlordInitials = property.landlord?.initials || "PK";
   const landlordPhone = property.landlord?.phone || "+92 300 1234567";

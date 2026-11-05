@@ -11,25 +11,9 @@ import {
   saveStoredProperties,
 } from "@/lib/mock-data";
 
-// Pre-curated verified Pakistani luxury architecture images for easy selection
-const PRESET_IMAGES = [
-  {
-    label: "Karachi Penthouse",
-    url: "https://lh3.googleusercontent.com/aida-public/AB6AXuDB2zpoWyl8ZcxyZ9VTBmFnJeOqr2YddS6o6SLXrvuRvseNAmS3xoQSGB8k_vY-hA1XZgefrIb33z0cnS8Sku2G_vqjGUakGorvgncrREPjor6Dwog7GWHryfDglOCx7zujV6EkB2G3K6YXem0f0V138qVfm-y-eaPxeXFJYu1BqO8EcnFseQIrgIT236znyncit7FVaY7Y9FFeaJOy3sRJ2gwLjOPuZ-3DHnmL7Vo",
-  },
-  {
-    label: "Lahore DHA Villa",
-    url: "https://lh3.googleusercontent.com/aida-public/AB6AXuD9aR3vX_K6k5l9H9eM6b8G0u_hJ_1K7zY-9w2P8_aQ1-xR3o5t7Y6u8_eI0w9q-zX2c4v7b1n3m5k7j9h-w0e8r6t4y2u0i8o6p4a2s0d8f6g4h2j0k8l6z4x2c0v8b6n4m2",
-  },
-  {
-    label: "Islamabad Margalla Ridge",
-    url: "https://lh3.googleusercontent.com/aida-public/AB6AXuCH0Y4q_K9v8b2M6c8X0u_hJ_1K7zY-9w2P8_aQ1-xR3o5t7Y6u8_eI0w9q-zX2c4v7b1n3m5k7j9h-w0e8r6t4y2u0i8o6p4a2s0d8f6g4h2j0k8l6z4x2c0v8b6n4m2",
-  },
-  {
-    label: "Executive Apartment",
-    url: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80",
-  },
-];
+// Self-contained default placeholder (no external links)
+const DEFAULT_PLACEHOLDER =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='600' viewBox='0 0 800 600'><rect width='800' height='600' fill='%23001637'/><g fill='%23a1f1e9' text-anchor='middle' font-family='system-ui,sans-serif'><text x='400' y='280' font-size='44'>🏡</text><text x='400' y='335' font-size='18' font-weight='600'>No Image Uploaded</text></g></svg>";
 
 interface PropertyFormData {
   owner_id: string;
@@ -78,8 +62,8 @@ const INITIAL_FORM: PropertyFormData = {
   location: "Lahore",
   address: "DHA Phase 6, Sector J, Street 4",
   status: "available",
-  imageUrl: PRESET_IMAGES[0].url,
-  images: [PRESET_IMAGES[0].url],
+  imageUrl: "",
+  images: [],
 
   category: "villas",
   transactionType: "rent",
@@ -126,7 +110,17 @@ export default function AdminDashboardPage() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Image Upload Handlers using Multer (with Base64 local fallback)
+  // Convert file from device to Data URL (Base64) for instant rendering and resilient local fallback
+  const readFileAsDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Image Upload Handlers using Multer
   const handleImageFilesSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -134,15 +128,24 @@ export default function AdminDashboardPage() {
     setIsUploadingImages(true);
     const fileArray = Array.from(files);
 
-    // 1. Generate local previews immediately so images are contained in blocks instantly
-    const localPreviews = fileArray.map((file) => URL.createObjectURL(file));
+    // 1. Convert device files to Data URLs immediately so they render into blocks instantly
+    const dataUrls = await Promise.all(fileArray.map((f) => readFileAsDataUrl(f)));
+    const validDataUrls = dataUrls.filter(Boolean);
+
     setFormData((prev) => {
-      const merged = [...prev.images, ...localPreviews];
+      const merged = [...prev.images, ...validDataUrls];
       return {
         ...prev,
         images: merged,
-        imageUrl: merged[0] || prev.imageUrl,
+        imageUrl: merged[0] || "",
       };
+    });
+
+    // Clear validation error on upload
+    setFormErrors((prev) => {
+      const next = { ...prev };
+      delete next.images;
+      return next;
     });
 
     // 2. Upload to backend Multer endpoint
@@ -160,21 +163,23 @@ export default function AdminDashboardPage() {
       if (res.ok) {
         const json = await res.json();
         if (json.success && Array.isArray(json.urls)) {
-          // Replace local blob URLs with server URLs returned by Multer
+          // Replace base64 preview items with permanent Multer static URLs
           setFormData((prev) => {
-            const nonBlobs = prev.images.filter((img) => !img.startsWith("blob:"));
-            const finalMerged = [...nonBlobs, ...json.urls];
+            const nonLocal = prev.images.filter((img) => !validDataUrls.includes(img));
+            const finalMerged = [...nonLocal, ...json.urls];
             return {
               ...prev,
               images: finalMerged,
-              imageUrl: finalMerged[0] || prev.imageUrl,
+              imageUrl: finalMerged[0] || "",
             };
           });
           showToast(`Uploaded ${json.urls.length} image(s) via Multer!`);
         }
+      } else {
+        showToast(`${fileArray.length} image(s) added to property gallery!`);
       }
     } catch {
-      showToast(`${fileArray.length} image(s) added and contained in gallery!`);
+      showToast(`${fileArray.length} image(s) added to property gallery!`);
     } finally {
       setIsUploadingImages(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -205,19 +210,6 @@ export default function AdminDashboardPage() {
       };
     });
     showToast("Primary cover image set!");
-  };
-
-  const handleAddPresetImage = (url: string) => {
-    setFormData((prev) => {
-      if (prev.images.includes(url)) return prev;
-      const updated = [...prev.images, url];
-      return {
-        ...prev,
-        images: updated,
-        imageUrl: updated[0] || url,
-      };
-    });
-    showToast("Preset image added to block gallery!");
   };
 
   // Synchronize properties with localStorage
@@ -255,7 +247,11 @@ export default function AdminDashboardPage() {
   // Open modal for Create
   const handleOpenCreate = () => {
     setEditingPropertyId(null);
-    setFormData(INITIAL_FORM);
+    setFormData({
+      ...INITIAL_FORM,
+      imageUrl: "",
+      images: [],
+    });
     setFormErrors({});
     setIsModalOpen(true);
   };
@@ -271,10 +267,10 @@ export default function AdminDashboardPage() {
     const aUnit = ((property.area_unit || "Marla") as "Marla" | "Kanal" | "Sq Ft" | "Sq Yd");
     const loc = property.location || "Lahore";
     const addr = property.address || property.location || "DHA Phase 6, Sector J";
-    const img = property.imageUrl || property.image_url || PRESET_IMAGES[0].url;
+    const img = property.imageUrl || property.image_url || "";
     const imgList = Array.isArray(property.images) && property.images.length > 0
       ? property.images
-      : img ? [img] : [PRESET_IMAGES[0].url];
+      : img ? [img] : [];
 
     setFormData({
       owner_id: property.owner_id || "usr-admin-01",
@@ -290,7 +286,7 @@ export default function AdminDashboardPage() {
       location: loc,
       address: addr,
       status: ((property.status || "available") as "available" | "rented" | "sold" | "pending"),
-      imageUrl: imgList[0] || img,
+      imageUrl: imgList[0] || img || "",
       images: imgList,
 
       category: pType,
@@ -332,6 +328,9 @@ export default function AdminDashboardPage() {
     if (!formData.landlordName.trim()) {
       errs.landlordName = "Landlord name is required.";
     }
+    if (!formData.images || formData.images.length === 0) {
+      errs.images = "Please upload at least 1 property image from your device.";
+    }
     setFormErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -354,12 +353,8 @@ export default function AdminDashboardPage() {
       .slice(0, 2)
       .toUpperCase() || "LL";
 
-    const imagesToSave = formData.images.length > 0
-      ? formData.images
-      : formData.imageUrl
-      ? [formData.imageUrl]
-      : [PRESET_IMAGES[0].url];
-    const primaryImg = imagesToSave[0] || PRESET_IMAGES[0].url;
+    const imagesToSave = formData.images;
+    const primaryImg = imagesToSave[0] || "";
 
     let updatedList: Property[];
 
@@ -812,7 +807,7 @@ export default function AdminDashboardPage() {
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-3">
                             <img
-                              src={p.images?.[0] || p.imageUrl || p.image_url || PRESET_IMAGES[0].url}
+                              src={p.images?.[0] || p.imageUrl || p.image_url || DEFAULT_PLACEHOLDER}
                               alt={p.title}
                               className="w-12 h-12 rounded-lg object-cover bg-gray-100 border border-[#e7e8ea] shrink-0"
                             />
@@ -1393,32 +1388,40 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
 
-              {/* Row 7: Contained Multi-Image Upload Block (Multer Processing) */}
+              {/* Row 7: Pure Device Image Upload Block (Multer Processing - No Links) */}
               <div className="p-4 bg-[#f2f4f6] rounded-xl border border-[#e7e8ea] space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <label className="block text-xs font-bold text-[#001637] flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-[18px] text-[#076a64]">photo_library</span>
-                      Property Photos &amp; Image Gallery Block
+                      <span className="material-symbols-outlined text-[18px] text-[#076a64]">add_photo_alternate</span>
+                      Upload Property Photos (From Device) <span className="text-red-500">*</span>
                     </label>
                     <p className="text-[11px] text-[#75777f]">
-                      Upload multiple images from your device. Each image is contained in a styled preview block. The first image serves as the primary cover.
+                      Upload photos directly from your computer or mobile device. No URL links. Select multiple images to build your gallery.
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
                     {isUploadingImages && (
-                      <span className="text-[10px] text-[#076a64] font-bold flex items-center gap-1 animate-pulse">
+                      <span className="text-[11px] text-[#076a64] font-bold flex items-center gap-1 animate-pulse">
                         <span className="material-symbols-outlined text-[14px] animate-spin">sync</span>
                         Uploading via Multer...
                       </span>
                     )}
-                    <span className="text-[10px] font-bold px-2 py-0.5 bg-white text-[#076a64] rounded-full border border-[#e7e8ea] shrink-0">
-                      {formData.images.length} Image{formData.images.length === 1 ? "" : "s"} Contained
+                    <span className="text-[11px] font-bold px-2.5 py-1 bg-white text-[#076a64] rounded-full border border-[#e7e8ea] shrink-0">
+                      {formData.images.length} Photo{formData.images.length === 1 ? "" : "s"} Contained
                     </span>
                   </div>
                 </div>
 
-                {/* Hidden Multi-file input processed by Multer */}
+                {/* Validation Error Message */}
+                {formErrors.images && (
+                  <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-600 text-xs font-semibold">
+                    <span className="material-symbols-outlined text-[16px]">error</span>
+                    <span>{formErrors.images}</span>
+                  </div>
+                )}
+
+                {/* Hidden File Input for Native File Picker */}
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -1428,117 +1431,121 @@ export default function AdminDashboardPage() {
                   className="hidden"
                 />
 
-                {/* Contained Image Blocks Grid */}
+                {/* Prominent Upload Box / Dropzone */}
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-[#076a64]/40 hover:border-[#076a64] bg-white rounded-xl p-5 text-center cursor-pointer transition-all hover:bg-[#f0faf9] group shadow-xs"
+                >
+                  <div className="w-12 h-12 mx-auto rounded-full bg-[#e6f7f5] group-hover:bg-[#a1f1e9] flex items-center justify-center text-[#076a64] transition-colors mb-2">
+                    <span className="material-symbols-outlined text-[28px]">cloud_upload</span>
+                  </div>
+                  <p className="text-xs font-bold text-[#001637]">
+                    Click here to choose images from your computer
+                  </p>
+                  <p className="text-[11px] text-[#75777f] mt-0.5">
+                    Select one or multiple photos (PNG, JPG, JPEG, WebP) • Processed automatically by Multer
+                  </p>
+                  <button
+                    type="button"
+                    disabled={isUploadingImages}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fileInputRef.current?.click();
+                    }}
+                    className="mt-3 px-4 py-2 bg-[#076a64] hover:bg-[#00201e] text-white text-xs font-bold rounded-lg inline-flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">file_upload</span>
+                    <span>{isUploadingImages ? "Uploading..." : "Browse & Upload Images"}</span>
+                  </button>
+                </div>
+
+                {/* Contained Image Blocks Gallery */}
                 {formData.images.length > 0 && (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-3 pt-1">
-                    {formData.images.map((imgUrl, index) => (
-                      <div
-                        key={`${imgUrl}-${index}`}
-                        className="relative aspect-square rounded-xl overflow-hidden border border-[#d2d4d7] bg-white group shadow-xs hover:border-[#076a64] transition-all"
-                      >
-                        <img
-                          src={imgUrl}
-                          alt={`Property photo ${index + 1}`}
-                          className="w-full h-full object-cover"
-                        />
+                  <div className="pt-2">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-bold text-[#001637]">
+                        Contained Photo Gallery ({formData.images.length})
+                      </span>
+                      <span className="text-[10px] text-[#75777f]">
+                        Hover over a photo to make it the Primary Cover or Delete
+                      </span>
+                    </div>
 
-                        {/* Top Left Badge: Cover vs Order */}
-                        <div className="absolute top-1.5 left-1.5 z-10 pointer-events-none">
-                          {index === 0 ? (
-                            <span className="px-1.5 py-0.5 bg-[#076a64] text-white text-[9px] font-bold rounded shadow-xs flex items-center gap-0.5">
-                              <span className="material-symbols-outlined text-[10px]">star</span>
-                              Cover
-                            </span>
-                          ) : (
-                            <span className="px-1.5 py-0.2 bg-black/60 backdrop-blur-xs text-white text-[9px] font-semibold rounded">
-                              #{index + 1}
-                            </span>
-                          )}
-                        </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                      {formData.images.map((imgUrl, index) => (
+                        <div
+                          key={`${imgUrl.slice(0, 30)}-${index}`}
+                          className={`relative aspect-square rounded-xl overflow-hidden border-2 ${
+                            index === 0 ? "border-[#076a64] ring-2 ring-[#a1f1e9]" : "border-[#d2d4d7]"
+                          } bg-slate-900 group shadow-xs transition-all`}
+                        >
+                          <img
+                            src={imgUrl}
+                            alt={`Uploaded property photo ${index + 1}`}
+                            className="w-full h-full object-cover"
+                          />
 
-                        {/* Hover Overlay Actions */}
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 p-1 z-20">
-                          {index !== 0 && (
+                          {/* Top Left Badge: Cover vs Order */}
+                          <div className="absolute top-1.5 left-1.5 z-10 pointer-events-none">
+                            {index === 0 ? (
+                              <span className="px-2 py-0.5 bg-[#076a64] text-white text-[10px] font-bold rounded-md shadow-md flex items-center gap-1">
+                                <span className="material-symbols-outlined text-[12px]">star</span>
+                                Cover
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 bg-black/60 backdrop-blur-xs text-white text-[9px] font-semibold rounded">
+                                #{index + 1}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Hover Overlay Actions */}
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 p-2 z-20">
+                            {index !== 0 && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSetCoverImage(index);
+                                }}
+                                title="Set as Primary Cover Photo"
+                                className="w-8 h-8 bg-white hover:bg-[#076a64] hover:text-white rounded-lg flex items-center justify-center text-[#001637] transition-colors shadow-md"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">star</span>
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleSetCoverImage(index);
+                                handleRemoveImage(index);
                               }}
-                              title="Make Cover Photo"
-                              className="w-7 h-7 bg-white hover:bg-[#076a64] hover:text-white rounded-lg flex items-center justify-center text-[#001637] transition-colors shadow-xs"
+                              title="Delete photo"
+                              className="w-8 h-8 bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center justify-center transition-colors shadow-md"
                             >
-                              <span className="material-symbols-outlined text-[14px]">star</span>
+                              <span className="material-symbols-outlined text-[16px]">delete</span>
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRemoveImage(index);
-                            }}
-                            title="Remove image from block"
-                            className="w-7 h-7 bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center justify-center transition-colors shadow-xs"
-                          >
-                            <span className="material-symbols-outlined text-[14px]">delete</span>
-                          </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
 
-                    {/* Add More Block Tile */}
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={isUploadingImages}
-                      className="aspect-square rounded-xl border-2 border-dashed border-[#c5c6cf] hover:border-[#076a64] bg-white/70 hover:bg-white flex flex-col items-center justify-center text-[#75777f] hover:text-[#076a64] transition-all p-2 gap-1 cursor-pointer"
-                    >
-                      <span className="material-symbols-outlined text-[24px]">add_photo_alternate</span>
-                      <span className="text-[10px] font-semibold text-center leading-tight">Add More</span>
-                    </button>
+                      {/* Add More Photos Block Tile */}
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploadingImages}
+                        className="aspect-square rounded-xl border-2 border-dashed border-[#076a64]/50 hover:border-[#076a64] bg-white hover:bg-[#f0faf9] flex flex-col items-center justify-center text-[#076a64] transition-all p-2 gap-1 cursor-pointer group shadow-2xs"
+                      >
+                        <span className="material-symbols-outlined text-[26px] group-hover:scale-110 transition-transform">
+                          add_photo_alternate
+                        </span>
+                        <span className="text-[10px] font-bold text-center leading-tight">
+                          + Add More
+                        </span>
+                      </button>
+                    </div>
                   </div>
                 )}
-
-                {/* Empty State / Drag & Drop Upload Block */}
-                {formData.images.length === 0 && (
-                  <div
-                    onClick={() => fileInputRef.current?.click()}
-                    className="border-2 border-dashed border-[#c5c6cf] hover:border-[#076a64] bg-white rounded-xl p-6 text-center cursor-pointer transition-colors"
-                  >
-                    <span className="material-symbols-outlined text-[36px] text-[#076a64] block mb-1">
-                      cloud_upload
-                    </span>
-                    <p className="text-xs font-bold text-[#001637]">
-                      Click to upload property images from your device
-                    </p>
-                    <p className="text-[11px] text-[#75777f] mt-0.5">
-                      Select multiple photos (PNG, JPEG, WebP) processed via Multer
-                    </p>
-                    <button
-                      type="button"
-                      disabled={isUploadingImages}
-                      className="mt-3 px-3.5 py-1.5 bg-[#076a64] text-white text-xs font-bold rounded-lg hover:bg-[#00201e] inline-flex items-center gap-1.5 shadow-xs"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">file_upload</span>
-                      <span>{isUploadingImages ? "Processing..." : "Select Images"}</span>
-                    </button>
-                  </div>
-                )}
-
-                {/* Preset Fast Selection Row */}
-                <div className="pt-2 border-t border-[#e7e8ea] flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] text-[#75777f] font-semibold">Or add verified architecture preset:</span>
-                  {PRESET_IMAGES.map((preset) => (
-                    <button
-                      key={preset.label}
-                      type="button"
-                      onClick={() => handleAddPresetImage(preset.url)}
-                      className="px-2 py-1 bg-white hover:bg-[#076a64] hover:text-white border border-[#e7e8ea] rounded text-[10px] font-semibold transition-colors"
-                    >
-                      + {preset.label}
-                    </button>
-                  ))}
-                </div>
               </div>
 
               {/* Row 7: Description */}
@@ -1676,7 +1683,7 @@ export default function AdminDashboardPage() {
 
             <div className="p-3 bg-[#f2f4f6] rounded-xl flex items-center gap-3 mb-5 border border-[#e7e8ea]">
               <img
-                src={propertyToDelete.imageUrl}
+                src={propertyToDelete.images?.[0] || propertyToDelete.imageUrl || propertyToDelete.image_url || DEFAULT_PLACEHOLDER}
                 alt={propertyToDelete.title}
                 className="w-10 h-10 rounded-lg object-cover"
               />

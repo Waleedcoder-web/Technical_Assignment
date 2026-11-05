@@ -44,6 +44,9 @@ export interface Property {
 }
 export const mockProperties: Property[] = [];
 
+export const DEFAULT_PROPERTY_PLACEHOLDER =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='800' height='600' viewBox='0 0 800 600'><rect width='800' height='600' fill='%23001637'/><g fill='%23a1f1e9' text-anchor='middle' font-family='system-ui,sans-serif'><text x='400' y='280' font-size='48'>🏡</text><text x='400' y='335' font-size='20' font-weight='600'>HavenKey Verified Property</text><text x='400' y='370' font-size='14' fill='%238093bb'>No Photo Uploaded</text></g></svg>";
+
 
 export const mockCategories = [
   {
