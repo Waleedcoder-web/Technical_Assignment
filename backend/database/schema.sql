@@ -70,6 +70,7 @@ CREATE TABLE properties (
     address TEXT NOT NULL,             -- Detailed Street / Sector Address
     status VARCHAR(50) NOT NULL DEFAULT 'available', -- e.g. available, rented, sold, pending
     image_url TEXT,
+    images TEXT[],
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );

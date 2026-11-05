@@ -465,7 +465,9 @@ app.post("/api/properties", async (req: Request, res: Response) => {
   };
 
   try {
+    const isValidUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(newProperty.owner_id || "");
     const { data, error } = await supabase.from("properties").insert([{
+      owner_id: isValidUuid ? newProperty.owner_id : null,
       title: newProperty.title,
       description: newProperty.description,
       property_type: newProperty.property_type,
@@ -479,13 +481,16 @@ app.post("/api/properties", async (req: Request, res: Response) => {
       address: newProperty.address,
       status: newProperty.status,
       image_url: newProperty.image_url,
+      images: newProperty.images || [],
     }]).select();
 
     if (!error && data && data.length > 0) {
       newProperty.id = data[0].id;
+    } else if (error) {
+      console.warn("Supabase properties insert warning:", error.message);
     }
-  } catch {
-    // In-memory fallback
+  } catch (err: any) {
+    console.warn("Supabase connection warning:", err.message);
   }
 
   properties.unshift(newProperty);
