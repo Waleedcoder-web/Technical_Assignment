@@ -601,13 +601,20 @@ export default function AdminDashboardPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            <Link
+              href="/properties/add"
+              className="px-4 py-2.5 bg-[#076a64] hover:bg-[#00201e] text-white text-xs font-bold rounded-lg transition-all flex items-center gap-2 shadow-sm"
+            >
+              <span className="material-symbols-outlined text-[18px]">add_photo_alternate</span>
+              <span>+ Upload New Property</span>
+            </Link>
             <button
               type="button"
               onClick={handleOpenCreate}
-              className="px-4 py-2.5 bg-[#001637] hover:bg-[#076a64] text-white text-xs font-bold rounded-lg transition-all flex items-center gap-2 shadow-sm"
+              className="hidden sm:inline-flex px-4 py-2.5 bg-[#001637] hover:bg-[#172b4d] text-white text-xs font-bold rounded-lg transition-all items-center gap-2 shadow-sm"
             >
               <span className="material-symbols-outlined text-[18px] text-[#a1f1e9]">add_circle</span>
-              <span>Add New Property</span>
+              <span>Quick Modal</span>
             </button>
           </div>
         </div>

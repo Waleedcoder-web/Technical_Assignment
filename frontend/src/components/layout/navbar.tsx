@@ -115,7 +115,7 @@ export default function Navbar() {
         {/* Right side actions */}
         <div className="flex items-center gap-3">
           <Link
-            href="/admin/dashboard?add=true"
+            href="/properties/add"
             className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#076a64] hover:bg-[#00201e] text-white text-xs font-bold rounded-lg transition-all shadow-sm"
           >
             <span className="material-symbols-outlined text-[16px]">add_photo_alternate</span>

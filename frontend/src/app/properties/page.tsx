@@ -86,7 +86,7 @@ export default function PropertiesPage() {
 
             <div className="flex items-center gap-3">
               <Link
-                href="/admin/dashboard?add=true"
+                href="/properties/add"
                 className="px-4 py-2.5 bg-[#076a64] hover:bg-[#00201e] text-white text-xs font-bold rounded-lg transition-all shadow-sm flex items-center gap-1.5"
               >
                 <span className="material-symbols-outlined text-[18px]">add_photo_alternate</span>
@@ -244,11 +244,11 @@ export default function PropertiesPage() {
                 No mock data is pre-loaded. Properties will be sent and displayed here once added via the website or admin dashboard.
               </p>
               <Link
-                href="/admin/dashboard"
+                href="/properties/add"
                 className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-[#076a64] text-white text-xs font-semibold rounded-lg hover:bg-[#00201e] transition-colors"
               >
-                <span className="material-symbols-outlined text-[16px]">add_business</span>
-                <span>Add First Property in Admin Panel</span>
+                <span className="material-symbols-outlined text-[16px]">add_photo_alternate</span>
+                <span>+ Upload First Property (With Photos)</span>
               </Link>
             </div>
           ) : (
