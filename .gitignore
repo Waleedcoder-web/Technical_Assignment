@@ -54,3 +54,8 @@ Thumbs.db
 *.tsbuildinfo
 **/*.tsbuildinfo
 next-env.d.ts
+
+# uploads
+uploads/
+**/uploads/*
+!**/uploads/.gitkeep

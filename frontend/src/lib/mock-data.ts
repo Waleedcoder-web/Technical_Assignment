@@ -14,6 +14,7 @@ export interface Property {
   address: string;
   status: "available" | "rented" | "sold" | "pending" | string;
   image_url?: string;
+  images?: string[];
   created_at?: string;
   updated_at?: string;
 

@@ -17,7 +17,7 @@ export default function PropertyCard({ property }: PropertyCardProps) {
       {/* Image & Overlays */}
       <div className="relative aspect-[16/10] overflow-hidden bg-[#edeef0]">
         <img
-          src={property.imageUrl || property.image_url || "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80"}
+          src={property.images?.[0] || property.imageUrl || property.image_url || "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80"}
           alt={property.imageAlt || property.title}
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
         />

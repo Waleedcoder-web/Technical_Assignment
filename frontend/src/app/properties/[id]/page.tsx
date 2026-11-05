@@ -164,7 +164,7 @@ export default function PropertyDetailPage({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-8">
             <div className="lg:col-span-8 rounded-2xl overflow-hidden aspect-[16/10] bg-[#edeef0] border border-[#e7e8ea] shadow-sm">
               <img
-                src={heroImage}
+                src={property.images?.[0] || heroImage}
                 alt={property.imageAlt || property.title}
                 className="w-full h-full object-cover"
               />
@@ -172,24 +172,53 @@ export default function PropertyDetailPage({
             <div className="lg:col-span-4 flex flex-col gap-4">
               <div className="rounded-xl overflow-hidden flex-1 bg-[#edeef0] border border-[#e7e8ea] shadow-sm">
                 <img
-                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuAExGAZu9bjGZfBZuKeg2v80L2uTkQN5uPxYd5OvjIX4vnFIJ7swxpQLQaPoACbCFAgRrQckFPI4nAtLvyLf62LN9hlpd9e2EJf81POrnesjp7uGz1g4-jeZ-pt0A5it-gAtDzruihO5Jfv2TwTfNg1HjBvpAoPIP2OTvDjOw2j-v79E2qGB2mc4cSo3xoyboDl8FJaT1QsH5xdQdgboB6bwRLI6sh2R_q6Xe3NUTQ"
+                  src={property.images?.[1] || property.images?.[0] || heroImage}
                   alt="Interior architecture"
                   className="w-full h-full object-cover"
                 />
               </div>
               <div className="rounded-xl overflow-hidden flex-1 bg-[#edeef0] border border-[#e7e8ea] shadow-sm relative group cursor-pointer">
                 <img
-                  src="https://lh3.googleusercontent.com/aida-public/AB6AXuCJhKcNxUOfL6-Y4VmklswhpN0T0BXa_7MfbvcOcA5ynslw0iREIolQCg_woiKUWRSAWhcxFwOaeVFl4M0-Ul2QyzS8a-YluVBY2ivvU2ac1ZS4lj-btoPXwJiZ4YlqA4h2N_dY18SNcU5TowTmuO_pyVKdle4tpBZZkosdMnngjk7p3ljDWbVhTIoFJzVQq127w1BtEl890dYNFicQNJm4blcwVmo9hCOak_sODp4"
+                  src={property.images?.[2] || property.images?.[0] || heroImage}
                   alt="Balcony view"
                   className="w-full h-full object-cover"
                 />
                 <div className="absolute inset-0 bg-[#001637]/60 flex items-center justify-center text-white text-sm font-semibold gap-2 backdrop-blur-xs">
                   <span className="material-symbols-outlined text-[20px]">photo_library</span>
-                  Verified Architectural Photos
+                  {property.images && property.images.length > 3
+                    ? `+${property.images.length - 2} More Photos`
+                    : "Verified Architectural Photos"}
                 </div>
               </div>
             </div>
           </div>
+
+          {/* Additional Contained Image Blocks (if more than 3 photos) */}
+          {property.images && property.images.length > 3 && (
+            <div className="p-4 bg-white rounded-2xl border border-[#e7e8ea] shadow-sm mb-8">
+              <h4 className="text-xs font-bold text-[#001637] mb-3 flex items-center gap-1.5 uppercase tracking-wider">
+                <span className="material-symbols-outlined text-[16px] text-[#076a64]">grid_view</span>
+                Full Property Image Gallery ({property.images.length} Contained Blocks)
+              </h4>
+              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                {property.images.map((img, idx) => (
+                  <div
+                    key={`${img}-${idx}`}
+                    className="aspect-square rounded-xl overflow-hidden border border-[#e7e8ea] bg-[#f2f4f6] relative group"
+                  >
+                    <img
+                      src={img}
+                      alt={`Photo ${idx + 1}`}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                    <span className="absolute bottom-1 right-1 px-1.5 py-0.2 bg-black/60 text-white text-[9px] rounded font-mono">
+                      #{idx + 1}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Details & Sidebar Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">

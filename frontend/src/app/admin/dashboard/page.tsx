@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import {
   mockAdminStats,
@@ -46,6 +46,7 @@ interface PropertyFormData {
   address: string;
   status: "available" | "rented" | "sold" | "pending";
   imageUrl: string;
+  images: string[];
 
   // UI convenience aliases
   category: "villas" | "apartments" | "flats" | "plots";
@@ -78,6 +79,7 @@ const INITIAL_FORM: PropertyFormData = {
   address: "DHA Phase 6, Sector J, Street 4",
   status: "available",
   imageUrl: PRESET_IMAGES[0].url,
+  images: [PRESET_IMAGES[0].url],
 
   category: "villas",
   transactionType: "rent",
@@ -110,6 +112,8 @@ export default function AdminDashboardPage() {
   const [editingPropertyId, setEditingPropertyId] = useState<string | null>(null);
   const [formData, setFormData] = useState<PropertyFormData>(INITIAL_FORM);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [isUploadingImages, setIsUploadingImages] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Delete Confirmation State
   const [propertyToDelete, setPropertyToDelete] = useState<Property | null>(null);
@@ -120,6 +124,100 @@ export default function AdminDashboardPage() {
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  // Image Upload Handlers using Multer (with Base64 local fallback)
+  const handleImageFilesSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploadingImages(true);
+    const fileArray = Array.from(files);
+
+    // 1. Generate local previews immediately so images are contained in blocks instantly
+    const localPreviews = fileArray.map((file) => URL.createObjectURL(file));
+    setFormData((prev) => {
+      const merged = [...prev.images, ...localPreviews];
+      return {
+        ...prev,
+        images: merged,
+        imageUrl: merged[0] || prev.imageUrl,
+      };
+    });
+
+    // 2. Upload to backend Multer endpoint
+    try {
+      const uploadData = new FormData();
+      fileArray.forEach((file) => {
+        uploadData.append("images", file);
+      });
+
+      const res = await fetch("http://localhost:5000/api/upload", {
+        method: "POST",
+        body: uploadData,
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.urls)) {
+          // Replace local blob URLs with server URLs returned by Multer
+          setFormData((prev) => {
+            const nonBlobs = prev.images.filter((img) => !img.startsWith("blob:"));
+            const finalMerged = [...nonBlobs, ...json.urls];
+            return {
+              ...prev,
+              images: finalMerged,
+              imageUrl: finalMerged[0] || prev.imageUrl,
+            };
+          });
+          showToast(`Uploaded ${json.urls.length} image(s) via Multer!`);
+        }
+      }
+    } catch {
+      showToast(`${fileArray.length} image(s) added and contained in gallery!`);
+    } finally {
+      setIsUploadingImages(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleRemoveImage = (indexToRemove: number) => {
+    setFormData((prev) => {
+      const updated = prev.images.filter((_, idx) => idx !== indexToRemove);
+      return {
+        ...prev,
+        images: updated,
+        imageUrl: updated[0] || "",
+      };
+    });
+    showToast("Image removed from gallery.");
+  };
+
+  const handleSetCoverImage = (indexToCover: number) => {
+    setFormData((prev) => {
+      const target = prev.images[indexToCover];
+      const others = prev.images.filter((_, idx) => idx !== indexToCover);
+      const updated = [target, ...others];
+      return {
+        ...prev,
+        images: updated,
+        imageUrl: target,
+      };
+    });
+    showToast("Primary cover image set!");
+  };
+
+  const handleAddPresetImage = (url: string) => {
+    setFormData((prev) => {
+      if (prev.images.includes(url)) return prev;
+      const updated = [...prev.images, url];
+      return {
+        ...prev,
+        images: updated,
+        imageUrl: updated[0] || url,
+      };
+    });
+    showToast("Preset image added to block gallery!");
   };
 
   // Synchronize properties with localStorage
@@ -174,6 +272,9 @@ export default function AdminDashboardPage() {
     const loc = property.location || "Lahore";
     const addr = property.address || property.location || "DHA Phase 6, Sector J";
     const img = property.imageUrl || property.image_url || PRESET_IMAGES[0].url;
+    const imgList = Array.isArray(property.images) && property.images.length > 0
+      ? property.images
+      : img ? [img] : [PRESET_IMAGES[0].url];
 
     setFormData({
       owner_id: property.owner_id || "usr-admin-01",
@@ -189,7 +290,8 @@ export default function AdminDashboardPage() {
       location: loc,
       address: addr,
       status: ((property.status || "available") as "available" | "rented" | "sold" | "pending"),
-      imageUrl: img,
+      imageUrl: imgList[0] || img,
+      images: imgList,
 
       category: pType,
       transactionType: lType,
@@ -252,6 +354,13 @@ export default function AdminDashboardPage() {
       .slice(0, 2)
       .toUpperCase() || "LL";
 
+    const imagesToSave = formData.images.length > 0
+      ? formData.images
+      : formData.imageUrl
+      ? [formData.imageUrl]
+      : [PRESET_IMAGES[0].url];
+    const primaryImg = imagesToSave[0] || PRESET_IMAGES[0].url;
+
     let updatedList: Property[];
 
     if (editingPropertyId) {
@@ -273,7 +382,8 @@ export default function AdminDashboardPage() {
             location: formData.location.trim(),
             address: formData.address.trim(),
             status: formData.status,
-            image_url: formData.imageUrl.trim() || PRESET_IMAGES[0].url,
+            image_url: primaryImg,
+            images: imagesToSave,
             updated_at: new Date().toISOString(),
 
             // Compatibility aliases for UI
@@ -286,7 +396,7 @@ export default function AdminDashboardPage() {
             baths: Number(formData.bathroom),
             size: `${formData.area_value} ${formData.area_unit}`,
             sizeCategory: formData.area_unit === "Kanal" ? "1-kanal" : "10-marla",
-            imageUrl: formData.imageUrl.trim() || PRESET_IMAGES[0].url,
+            imageUrl: primaryImg,
             imageAlt: formData.title,
             featured: formData.featured,
             verified: formData.verified,
@@ -310,7 +420,7 @@ export default function AdminDashboardPage() {
         fetch(`http://localhost:5000/api/properties/${editingPropertyId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(formData),
+          body: JSON.stringify({ ...formData, images: imagesToSave, image_url: primaryImg }),
         }).catch(() => {});
       } catch {}
 
@@ -338,7 +448,8 @@ export default function AdminDashboardPage() {
         location: formData.location.trim(),
         address: formData.address.trim(),
         status: formData.status,
-        image_url: formData.imageUrl.trim() || PRESET_IMAGES[0].url,
+        image_url: primaryImg,
+        images: imagesToSave,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
 
@@ -352,7 +463,7 @@ export default function AdminDashboardPage() {
         baths: Number(formData.bathroom),
         size: `${formData.area_value} ${formData.area_unit}`,
         sizeCategory: formData.area_unit === "Kanal" ? "1-kanal" : "10-marla",
-        imageUrl: formData.imageUrl.trim() || PRESET_IMAGES[0].url,
+        imageUrl: primaryImg,
         imageAlt: formData.title,
         featured: formData.featured,
         verified: formData.verified,
@@ -701,7 +812,7 @@ export default function AdminDashboardPage() {
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-3">
                             <img
-                              src={p.imageUrl}
+                              src={p.images?.[0] || p.imageUrl || p.image_url || PRESET_IMAGES[0].url}
                               alt={p.title}
                               className="w-12 h-12 rounded-lg object-cover bg-gray-100 border border-[#e7e8ea] shrink-0"
                             />
@@ -711,6 +822,11 @@ export default function AdminDashboardPage() {
                               </span>
                               <div className="flex items-center gap-1.5 text-[10px] text-[#75777f] mt-0.5">
                                 <span className="font-mono">ID: {p.id}</span>
+                                {p.images && p.images.length > 1 && (
+                                  <span className="px-1.5 py-0.2 bg-[#a1f1e9] text-[#076a64] rounded font-bold">
+                                    {p.images.length} photos
+                                  </span>
+                                )}
                                 {p.featured && (
                                   <span className="px-1.5 py-0.2 bg-[#001637] text-white rounded font-bold">
                                     Featured
@@ -1277,36 +1393,149 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
 
-              {/* Row 6: Image URL & Presets */}
-              <div>
-                <label className="block text-xs font-semibold text-[#191c1e] mb-1">Property Image URL</label>
-                <div className="flex gap-2 mb-2">
-                  <input
-                    type="url"
-                    value={formData.imageUrl}
-                    onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
-                    placeholder="https://..."
-                    className="flex-1 h-10 px-3 bg-[#f2f4f6] rounded-lg border border-[#e7e8ea] focus:bg-white outline-none text-xs"
-                  />
-                  {formData.imageUrl && (
-                    <img
-                      src={formData.imageUrl}
-                      alt="Preview"
-                      className="w-10 h-10 rounded-lg object-cover border border-[#e7e8ea] shrink-0"
-                    />
-                  )}
+              {/* Row 7: Contained Multi-Image Upload Block (Multer Processing) */}
+              <div className="p-4 bg-[#f2f4f6] rounded-xl border border-[#e7e8ea] space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <label className="block text-xs font-bold text-[#001637] flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-[18px] text-[#076a64]">photo_library</span>
+                      Property Photos &amp; Image Gallery Block
+                    </label>
+                    <p className="text-[11px] text-[#75777f]">
+                      Upload multiple images from your device. Each image is contained in a styled preview block. The first image serves as the primary cover.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {isUploadingImages && (
+                      <span className="text-[10px] text-[#076a64] font-bold flex items-center gap-1 animate-pulse">
+                        <span className="material-symbols-outlined text-[14px] animate-spin">sync</span>
+                        Uploading via Multer...
+                      </span>
+                    )}
+                    <span className="text-[10px] font-bold px-2 py-0.5 bg-white text-[#076a64] rounded-full border border-[#e7e8ea] shrink-0">
+                      {formData.images.length} Image{formData.images.length === 1 ? "" : "s"} Contained
+                    </span>
+                  </div>
                 </div>
-                {/* Preset Fast Selection */}
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] text-[#75777f] font-semibold">Or pick architectural preset:</span>
+
+                {/* Hidden Multi-file input processed by Multer */}
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  multiple
+                  accept="image/png,image/jpeg,image/webp,image/jpg"
+                  onChange={handleImageFilesSelect}
+                  className="hidden"
+                />
+
+                {/* Contained Image Blocks Grid */}
+                {formData.images.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-3 pt-1">
+                    {formData.images.map((imgUrl, index) => (
+                      <div
+                        key={`${imgUrl}-${index}`}
+                        className="relative aspect-square rounded-xl overflow-hidden border border-[#d2d4d7] bg-white group shadow-xs hover:border-[#076a64] transition-all"
+                      >
+                        <img
+                          src={imgUrl}
+                          alt={`Property photo ${index + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+
+                        {/* Top Left Badge: Cover vs Order */}
+                        <div className="absolute top-1.5 left-1.5 z-10 pointer-events-none">
+                          {index === 0 ? (
+                            <span className="px-1.5 py-0.5 bg-[#076a64] text-white text-[9px] font-bold rounded shadow-xs flex items-center gap-0.5">
+                              <span className="material-symbols-outlined text-[10px]">star</span>
+                              Cover
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.2 bg-black/60 backdrop-blur-xs text-white text-[9px] font-semibold rounded">
+                              #{index + 1}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Hover Overlay Actions */}
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 p-1 z-20">
+                          {index !== 0 && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSetCoverImage(index);
+                              }}
+                              title="Make Cover Photo"
+                              className="w-7 h-7 bg-white hover:bg-[#076a64] hover:text-white rounded-lg flex items-center justify-center text-[#001637] transition-colors shadow-xs"
+                            >
+                              <span className="material-symbols-outlined text-[14px]">star</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveImage(index);
+                            }}
+                            title="Remove image from block"
+                            className="w-7 h-7 bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center justify-center transition-colors shadow-xs"
+                          >
+                            <span className="material-symbols-outlined text-[14px]">delete</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Add More Block Tile */}
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploadingImages}
+                      className="aspect-square rounded-xl border-2 border-dashed border-[#c5c6cf] hover:border-[#076a64] bg-white/70 hover:bg-white flex flex-col items-center justify-center text-[#75777f] hover:text-[#076a64] transition-all p-2 gap-1 cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[24px]">add_photo_alternate</span>
+                      <span className="text-[10px] font-semibold text-center leading-tight">Add More</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Empty State / Drag & Drop Upload Block */}
+                {formData.images.length === 0 && (
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border-2 border-dashed border-[#c5c6cf] hover:border-[#076a64] bg-white rounded-xl p-6 text-center cursor-pointer transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-[36px] text-[#076a64] block mb-1">
+                      cloud_upload
+                    </span>
+                    <p className="text-xs font-bold text-[#001637]">
+                      Click to upload property images from your device
+                    </p>
+                    <p className="text-[11px] text-[#75777f] mt-0.5">
+                      Select multiple photos (PNG, JPEG, WebP) processed via Multer
+                    </p>
+                    <button
+                      type="button"
+                      disabled={isUploadingImages}
+                      className="mt-3 px-3.5 py-1.5 bg-[#076a64] text-white text-xs font-bold rounded-lg hover:bg-[#00201e] inline-flex items-center gap-1.5 shadow-xs"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">file_upload</span>
+                      <span>{isUploadingImages ? "Processing..." : "Select Images"}</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Preset Fast Selection Row */}
+                <div className="pt-2 border-t border-[#e7e8ea] flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] text-[#75777f] font-semibold">Or add verified architecture preset:</span>
                   {PRESET_IMAGES.map((preset) => (
                     <button
                       key={preset.label}
                       type="button"
-                      onClick={() => setFormData({ ...formData, imageUrl: preset.url })}
-                      className="px-2 py-1 bg-[#edeef0] hover:bg-[#076a64] hover:text-white rounded text-[10px] font-semibold transition-colors"
+                      onClick={() => handleAddPresetImage(preset.url)}
+                      className="px-2 py-1 bg-white hover:bg-[#076a64] hover:text-white border border-[#e7e8ea] rounded text-[10px] font-semibold transition-colors"
                     >
-                      {preset.label}
+                      + {preset.label}
                     </button>
                   ))}
                 </div>

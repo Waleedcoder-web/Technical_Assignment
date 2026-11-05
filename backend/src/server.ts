@@ -3,6 +3,9 @@ import cors from "cors";
 import morgan from "morgan";
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
+import path from "path";
+import fs from "fs";
+import multer from "multer";
 
 import { users, properties, complaints, roles, chatsmessages, agreements } from "./lib/data";
 import { User, UserRole, Property, Complaint, ChatMessage, Agreement } from "./lib/types";
@@ -13,6 +16,37 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Ensure upload directory exists
+const uploadDir = path.join(__dirname, "../uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+// Multer Storage Configuration
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, uploadDir);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const cleanBase = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9]/g, "-").slice(0, 30);
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e6);
+    cb(null, `${cleanBase}-${uniqueSuffix}${ext || ".jpg"}`);
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB per file
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files (PNG, JPEG, WebP, etc.) are permitted."));
+    }
+  },
+});
+
 // Middleware
 app.use(
   cors({
@@ -22,6 +56,9 @@ app.use(
 );
 app.use(express.json());
 app.use(morgan("dev"));
+
+// Static route for serving uploaded images
+app.use("/uploads", express.static(uploadDir));
 
 // ---------------------------------------------------------------------
 // Health Check & Supabase Status
@@ -332,6 +369,30 @@ app.get("/api/properties/:id", async (req: Request, res: Response) => {
   res.json({ success: true, data: property });
 });
 
+// ---------------------------------------------------------------------
+// Multi-Image Upload API (Multer)
+// ---------------------------------------------------------------------
+app.post("/api/upload", upload.array("images", 10), (req: Request, res: Response) => {
+  const files = req.files as Express.Multer.File[];
+  if (!files || files.length === 0) {
+    return res.status(400).json({ success: false, message: "No image files were uploaded." });
+  }
+
+  const urls = files.map((file) => `http://localhost:${PORT}/uploads/${file.filename}`);
+  res.status(201).json({
+    success: true,
+    message: `${files.length} image(s) uploaded successfully`,
+    urls,
+    files: files.map((f) => ({
+      filename: f.filename,
+      originalname: f.originalname,
+      size: f.size,
+      mimetype: f.mimetype,
+      url: `http://localhost:${PORT}/uploads/${f.filename}`,
+    })),
+  });
+});
+
 app.post("/api/properties", async (req: Request, res: Response) => {
   const {
     owner_id,
@@ -353,11 +414,21 @@ app.post("/api/properties", async (req: Request, res: Response) => {
     status,
     image_url,
     imageUrl,
+    images,
   } = req.body;
 
   if (!title || !price || !location) {
     return res.status(400).json({ success: false, message: "Title, Price, and Location are required" });
   }
+
+  // Determine images array and primary image
+  const resolvedImages: string[] = Array.isArray(images) && images.length > 0
+    ? images
+    : image_url || imageUrl
+    ? [image_url || imageUrl]
+    : [];
+
+  const primaryImage = resolvedImages[0] || image_url || imageUrl || "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80";
 
   const newProperty: Property = {
     id: `prop-${Date.now()}`,
@@ -374,7 +445,8 @@ app.post("/api/properties", async (req: Request, res: Response) => {
     location,
     address: address || location,
     status: status || "available",
-    image_url: image_url || imageUrl || "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80",
+    image_url: primaryImage,
+    images: resolvedImages,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
 
@@ -389,7 +461,7 @@ app.post("/api/properties", async (req: Request, res: Response) => {
     city: location,
     verified: true,
     featured: false,
-    imageUrl: image_url || imageUrl || "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80",
+    imageUrl: primaryImage,
   };
 
   try {
