@@ -1,26 +1,97 @@
+"use client";
+
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import Navbar from "@/components/layout/navbar";
 import Footer from "@/components/layout/footer";
-import { mockProperties } from "@/lib/mock-data";
-import { notFound } from "next/navigation";
+import { Property, getStoredProperties } from "@/lib/mock-data";
 
-export function generateStaticParams() {
-  return mockProperties.map((property) => ({
-    id: property.id,
-  }));
-}
-
-export default async function PropertyDetailPage({
+export default function PropertyDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = await params;
-  const property = mockProperties.find((p) => p.id === id) || mockProperties[0];
+  const { id } = use(params);
+  const [property, setProperty] = useState<Property | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const list = getStoredProperties();
+    const found = list.find((p) => p.id === id) || null;
+    setProperty(found);
+    setIsLoading(false);
+  }, [id]);
+
+  if (isLoading) {
+    return (
+      <>
+        <Navbar />
+        <main className="w-full pt-28 pb-16 bg-[#f8f9fb] min-h-[60vh] flex items-center justify-center">
+          <div className="flex items-center gap-3 text-sm text-[#44474e]">
+            <span className="material-symbols-outlined animate-spin text-[24px] text-[#076a64]">
+              progress_activity
+            </span>
+            <span>Loading property details...</span>
+          </div>
+        </main>
+        <Footer />
+      </>
+    );
+  }
 
   if (!property) {
-    notFound();
+    return (
+      <>
+        <Navbar />
+        <main className="w-full pt-28 pb-20 bg-[#f8f9fb] min-h-[60vh]">
+          <div className="max-w-[800px] mx-auto px-6 text-center">
+            <div className="bg-white p-8 sm:p-12 rounded-2xl border border-[#e7e8ea] shadow-sm">
+              <span className="material-symbols-outlined text-[56px] text-[#8093bb]">
+                domain_disabled
+              </span>
+              <h1 className="text-2xl font-bold text-[#001637] font-plus-jakarta mt-3">
+                Property Not Found
+              </h1>
+              <p className="text-sm text-[#44474e] mt-2 max-w-md mx-auto">
+                The requested property listing (ID: <span className="font-mono text-xs">{id}</span>) does not exist in the database or may have been removed.
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-3 mt-6">
+                <Link
+                  href="/properties"
+                  className="px-5 py-2.5 bg-[#001637] text-white text-xs font-semibold rounded-lg hover:bg-[#172b4d] transition-colors"
+                >
+                  Browse Available Properties
+                </Link>
+                <Link
+                  href="/admin/dashboard"
+                  className="px-5 py-2.5 bg-[#076a64] text-white text-xs font-semibold rounded-lg hover:bg-[#00201e] transition-colors"
+                >
+                  Manage Listings in Admin
+                </Link>
+              </div>
+            </div>
+          </div>
+        </main>
+        <Footer />
+      </>
+    );
   }
+
+  const transaction = property.transactionType || property.listing_type || "rent";
+  const bedrooms = property.beds ?? property.bedroom ?? 0;
+  const bathrooms = property.baths ?? property.bathroom ?? 0;
+  const areaDisplay = property.size || `${property.area_value ?? 10} ${property.area_unit ?? "Marla"}`;
+  const priceDisplay = property.priceFormatted || `PKR ${Number(property.price).toLocaleString()}`;
+  const pricePeriod = property.pricePeriod || (transaction === "rent" ? "/ mo" : "");
+  const heroImage = property.imageUrl || property.image_url || "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80";
+  const landlordName = property.landlord?.name || "Verified Landlord";
+  const landlordInitials = property.landlord?.initials || "PK";
+  const landlordPhone = property.landlord?.phone || "+92 300 1234567";
+  const landlordEmail = property.landlord?.email || "concierge@havenkey.pk";
+  const landlordRating = property.landlord?.rating || 5.0;
+  const amenitiesList = property.amenities && property.amenities.length > 0
+    ? property.amenities
+    : ["24/7 Security", "Backup Power", "Gated Access", "Dedicated Parking", "FBR Tax Compliant"];
 
   return (
     <>
@@ -46,7 +117,10 @@ export default async function PropertyDetailPage({
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <span className="px-2.5 py-1 bg-[#001637] text-white rounded-md text-xs font-semibold tracking-wide uppercase">
-                  {property.transactionType === "rent" ? "For Rent" : "For Sale"}
+                  {transaction === "rent" ? "For Rent" : "For Sale"}
+                </span>
+                <span className="px-2.5 py-1 bg-[#a1f1e9] text-[#076a64] rounded-md text-xs font-semibold tracking-wide uppercase">
+                  {property.status || "available"}
                 </span>
                 {property.verified && (
                   <span className="px-2.5 py-1 bg-[#076a64]/10 text-[#076a64] rounded-md text-xs font-semibold flex items-center gap-1 border border-[#076a64]/20">
@@ -64,19 +138,22 @@ export default async function PropertyDetailPage({
                   location_on
                 </span>
                 <span>{property.location}</span>
+                {property.address && property.address !== property.location && (
+                  <span className="text-xs text-[#75777f]">({property.address})</span>
+                )}
               </div>
             </div>
 
             {/* Price Box */}
             <div className="flex items-baseline lg:items-end flex-col bg-white p-4 rounded-xl border border-[#e7e8ea] shadow-sm">
               <span className="text-xs uppercase text-[#44474e] font-semibold">
-                {property.transactionType === "rent" ? "Monthly Rental Rate" : "Asking Price"}
+                {transaction === "rent" ? "Monthly Rental Rate" : "Asking Price"}
               </span>
               <p className="text-2xl sm:text-3xl font-bold text-[#001637] font-plus-jakarta mt-0.5">
-                {property.priceFormatted}{" "}
-                {property.pricePeriod && (
+                {priceDisplay}{" "}
+                {pricePeriod && (
                   <span className="text-sm font-normal text-[#44474e]">
-                    {property.pricePeriod}
+                    {pricePeriod}
                   </span>
                 )}
               </p>
@@ -87,8 +164,8 @@ export default async function PropertyDetailPage({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-8">
             <div className="lg:col-span-8 rounded-2xl overflow-hidden aspect-[16/10] bg-[#edeef0] border border-[#e7e8ea] shadow-sm">
               <img
-                src={property.imageUrl}
-                alt={property.imageAlt}
+                src={heroImage}
+                alt={property.imageAlt || property.title}
                 className="w-full h-full object-cover"
               />
             </div>
@@ -108,7 +185,7 @@ export default async function PropertyDetailPage({
                 />
                 <div className="absolute inset-0 bg-[#001637]/60 flex items-center justify-center text-white text-sm font-semibold gap-2 backdrop-blur-xs">
                   <span className="material-symbols-outlined text-[20px]">photo_library</span>
-                  View All 18 Photos
+                  Verified Architectural Photos
                 </div>
               </div>
             </div>
@@ -126,7 +203,7 @@ export default async function PropertyDetailPage({
                   </div>
                   <div>
                     <span className="text-xs text-[#44474e]">Bedrooms</span>
-                    <p className="text-base font-bold text-[#001637]">{property.beds} Master Beds</p>
+                    <p className="text-base font-bold text-[#001637]">{bedrooms} Beds</p>
                   </div>
                 </div>
 
@@ -136,7 +213,7 @@ export default async function PropertyDetailPage({
                   </div>
                   <div>
                     <span className="text-xs text-[#44474e]">Bathrooms</span>
-                    <p className="text-base font-bold text-[#001637]">{property.baths} Baths</p>
+                    <p className="text-base font-bold text-[#001637]">{bathrooms} Baths</p>
                   </div>
                 </div>
 
@@ -146,46 +223,31 @@ export default async function PropertyDetailPage({
                   </div>
                   <div>
                     <span className="text-xs text-[#44474e]">Plot / Size</span>
-                    <p className="text-base font-bold text-[#001637]">{property.size}</p>
+                    <p className="text-base font-bold text-[#001637]">{areaDisplay}</p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-[#f2f4f6] flex items-center justify-center text-[#076a64]">
-                    <span className="material-symbols-outlined text-[22px]">verified_user</span>
+                    <span className="material-symbols-outlined text-[22px]">apartment</span>
                   </div>
                   <div>
-                    <span className="text-xs text-[#44474e]">Landlord KYC</span>
-                    <p className="text-base font-bold text-[#076a64]">Passed 100%</p>
+                    <span className="text-xs text-[#44474e]">Category</span>
+                    <p className="text-base font-bold text-[#001637] capitalize">
+                      {property.property_type || property.category || "Property"}
+                    </p>
                   </div>
                 </div>
               </div>
 
-              {/* Architectural Description */}
+              {/* Description */}
               <div className="bg-white p-6 rounded-xl border border-[#e7e8ea] shadow-sm">
                 <h3 className="text-lg font-bold text-[#001637] font-plus-jakarta mb-3">
-                  Property Overview &amp; Architectural Summary
+                  Property Description
                 </h3>
-                <p className="text-sm text-[#44474e] leading-relaxed">
-                  {property.description} Designed with modern architectural minimalism, this property balances
-                  editorial polish with high-density enterprise utility. Features generous canvas framing,
-                  razor-thin structural dividers, soft multi-layered ambient depth, and luminous white surfaces
-                  against pale architectural gray backdrops.
+                <p className="text-sm text-[#44474e] leading-relaxed whitespace-pre-line">
+                  {property.description}
                 </p>
-                <div className="mt-4 pt-4 border-t border-[#edeef0] grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-                  <div>
-                    <span className="text-[#75777f]">Property ID:</span>
-                    <span className="font-semibold text-[#001637] ml-1">{property.id}</span>
-                  </div>
-                  <div>
-                    <span className="text-[#75777f]">Possession:</span>
-                    <span className="font-semibold text-[#076a64] ml-1">Immediate</span>
-                  </div>
-                  <div>
-                    <span className="text-[#75777f]">Zoning:</span>
-                    <span className="font-semibold text-[#001637] ml-1">Approved Residential</span>
-                  </div>
-                </div>
               </div>
 
               {/* Amenities Grid */}
@@ -194,7 +256,7 @@ export default async function PropertyDetailPage({
                   Features &amp; Verified Amenities
                 </h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {property.amenities.map((amenity) => (
+                  {amenitiesList.map((amenity) => (
                     <div
                       key={amenity}
                       className="flex items-center gap-2 p-3 bg-[#f2f4f6] rounded-lg text-xs font-semibold text-[#001637]"
@@ -212,19 +274,19 @@ export default async function PropertyDetailPage({
               <div className="bg-white p-6 rounded-xl border border-[#e7e8ea] shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
                   <div className="w-14 h-14 rounded-full bg-[#172b4d] text-white flex items-center justify-center text-lg font-bold">
-                    {property.landlord.initials}
+                    {landlordInitials}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
                       <h4 className="text-base font-bold text-[#001637]">
-                        {property.landlord.name}
+                        {landlordName}
                       </h4>
                       <span className="px-2 py-0.5 bg-[#a1f1e9] text-[#076a64] text-[10px] font-bold rounded-full uppercase">
                         Biometric Verified
                       </span>
                     </div>
                     <p className="text-xs text-[#44474e] mt-0.5">
-                      Direct Property Owner • Rating: {property.landlord.rating} / 5.0 ★
+                      Direct Property Owner • Rating: {landlordRating} / 5.0 ★
                     </p>
                     <p className="text-xs text-[#75777f] mt-0.5">
                       ID: NADRA CNIC Verified &amp; Registered Escrow
@@ -234,14 +296,14 @@ export default async function PropertyDetailPage({
 
                 <div className="flex items-center gap-2 w-full sm:w-auto">
                   <a
-                    href={`tel:${property.landlord.phone}`}
+                    href={`tel:${landlordPhone}`}
                     className="flex-1 sm:flex-initial px-4 py-2 bg-[#f2f4f6] hover:bg-[#edeef0] text-[#001637] text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors"
                   >
                     <span className="material-symbols-outlined text-[16px]">call</span>
                     Call Owner
                   </a>
                   <a
-                    href={`mailto:${property.landlord.email}`}
+                    href={`mailto:${landlordEmail}`}
                     className="flex-1 sm:flex-initial px-4 py-2 bg-[#076a64] hover:bg-[#00201e] text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors"
                   >
                     <span className="material-symbols-outlined text-[16px]">mail</span>

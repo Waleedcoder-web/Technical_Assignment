@@ -25,23 +25,37 @@ export interface User {
 
 export interface Property {
   id: string;
+  owner_id?: string;
   title: string;
-  category: "villas" | "apartments" | "flats" | "plots";
-  transactionType: "rent" | "sale";
-  price: number;
-  priceFormatted: string;
-  pricePeriod?: string;
-  location: string;
-  city: string;
-  beds: number;
-  baths: number;
-  size: string;
-  landlordId: string;
-  verified: boolean;
-  featured: boolean;
-  imageUrl: string;
   description: string;
-  amenities: string[];
+  property_type: "villas" | "apartments" | "flats" | "plots" | string;
+  listing_type: "rent" | "sale" | string;
+  price: number;
+  area_value: number;
+  area_unit: "Marla" | "Kanal" | "Sq Ft" | string;
+  bedroom: number;
+  bathroom: number;
+  location: string;
+  address: string;
+  status: "available" | "rented" | "sold" | "pending" | string;
+  image_url?: string;
+  created_at?: string;
+  updated_at?: string;
+
+  // Compatibility aliases
+  category?: "villas" | "apartments" | "flats" | "plots" | string;
+  transactionType?: "rent" | "sale" | string;
+  priceFormatted?: string;
+  pricePeriod?: string;
+  city?: string;
+  beds?: number;
+  baths?: number;
+  size?: string;
+  landlordId?: string;
+  verified?: boolean;
+  featured?: boolean;
+  imageUrl?: string;
+  amenities?: string[];
 }
 
 export interface Complaint {

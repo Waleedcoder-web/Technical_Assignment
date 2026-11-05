@@ -20,21 +20,20 @@ export default function AiAssistantPage() {
     {
       id: "1",
       sender: "ai",
-      text: "Hello Waleed! I'm your HavenKey AI Real Estate Advisor. I can search through 9,900+ biometric verified properties, calculate tenancy escrow deposits, compare cap rates across Lahore, Islamabad, and Karachi, and review lease compliance.",
+      text: "Hello! I'm your HavenKey AI Real Estate Advisor. I can search through verified properties, calculate tenancy escrow deposits, compare cap rates across Lahore, Islamabad, and Karachi, and review lease compliance.",
       timestamp: "11:30 AM",
     },
     {
       id: "2",
       sender: "user",
-      text: "Show me top verified rental properties in Karachi Clifton and Lahore DHA with luxury amenities and direct owner lease.",
+      text: "How do I list or browse newly verified properties on HavenKey?",
       timestamp: "11:31 AM",
     },
     {
       id: "3",
       sender: "ai",
-      text: "I found 2 prime verified properties matching your criteria with direct owner leases and biometric escrow protection:",
+      text: "You can manage, create, and publish verified properties via the Admin Dashboard. All listings are saved with verified title deeds, biometric seller authentication, and real-time database persistence.",
       timestamp: "11:31 AM",
-      properties: [mockProperties[0], mockProperties[1]],
     },
   ]);
 
@@ -63,7 +62,6 @@ export default function AiAssistantPage() {
         sender: "ai",
         text: `Here are the matching verified insights based on your query "${userMsg.text}". All title deeds are cross-verified with biometric land registries and legal tenancy compliance.`,
         timestamp: "Just now",
-        properties: [mockProperties[2]],
       };
       setMessages((prev) => [...prev, aiReply]);
     }, 1000);
@@ -181,9 +179,9 @@ export default function AiAssistantPage() {
                       <p>{msg.text}</p>
 
                       {/* Embedded Property Cards */}
-                      {msg.properties && (
+                      {msg.properties && msg.properties.filter(Boolean).length > 0 && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                          {msg.properties.map((prop) => (
+                          {msg.properties.filter(Boolean).map((prop) => (
                             <div key={prop.id} className="max-w-sm">
                               <PropertyCard property={prop} />
                             </div>

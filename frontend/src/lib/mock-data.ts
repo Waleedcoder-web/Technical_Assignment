@@ -1,23 +1,37 @@
 export interface Property {
   id: string;
+  owner_id?: string;
   title: string;
-  category: "villas" | "apartments" | "flats" | "plots";
-  transactionType: "rent" | "sale";
-  price: number;
-  priceFormatted: string;
-  pricePeriod?: string;
-  location: string;
-  city: string;
-  beds: number;
-  baths: number;
-  size: string;
-  sizeCategory: string;
-  featured: boolean;
-  verified: boolean;
-  imageUrl: string;
-  imageAlt: string;
   description: string;
-  landlord: {
+  property_type: "villas" | "apartments" | "flats" | "plots" | string;
+  listing_type: "rent" | "sale" | string;
+  price: number;
+  area_value: number;
+  area_unit: "Marla" | "Kanal" | "Sq Ft" | string;
+  bedroom: number;
+  bathroom: number;
+  location: string;
+  address: string;
+  status: "available" | "rented" | "sold" | "pending" | string;
+  image_url?: string;
+  created_at?: string;
+  updated_at?: string;
+
+  // Compatibility aliases
+  category?: "villas" | "apartments" | "flats" | "plots" | string;
+  transactionType?: "rent" | "sale" | string;
+  priceFormatted?: string;
+  pricePeriod?: string;
+  city?: string;
+  beds?: number;
+  baths?: number;
+  size?: string;
+  sizeCategory?: string;
+  featured?: boolean;
+  verified?: boolean;
+  imageUrl?: string;
+  imageAlt?: string;
+  landlord?: {
     name: string;
     initials: string;
     verified: boolean;
@@ -25,196 +39,10 @@ export interface Property {
     phone: string;
     email: string;
   };
-  amenities: string[];
+  amenities?: string[];
 }
+export const mockProperties: Property[] = [];
 
-export const mockProperties: Property[] = [
-  {
-    id: "lumina-sky-karachi",
-    title: "The Lumina Sky Residence",
-    category: "apartments",
-    transactionType: "rent",
-    price: 380000,
-    priceFormatted: "PKR 380,000",
-    pricePeriod: "/ mo",
-    location: "Clifton Block 4, Karachi",
-    city: "Karachi",
-    beds: 4,
-    baths: 5,
-    size: "1 Kanal (4,500 sq ft)",
-    sizeCategory: "1-kanal",
-    featured: true,
-    verified: true,
-    imageUrl:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuDB2zpoWyl8ZcxyZ9VTBmFnJeOqr2YddS6o6SLXrvuRvseNAmS3xoQSGB8k_vY-hA1XZgefrIb33z0cnS8Sku2G_vqjGUakGorvgncrREPjor6Dwog7GWHryfDglOCx7zujV6EkB2G3K6YXem0f0V138qVfm-y-eaPxeXFJYu1BqO8EcnFseQIrgIT236znyncit7FVaY7Y9FFeaJOy3sRJ2gwLjOPuZ-3DHnmL7Vo",
-    imageAlt: "Interior luxury penthouse overlooking Karachi Arabian sea coast",
-    description:
-      "Panoramic Arabian Sea vistas, automated climate control, dedicated service entrance, and 2 private basement parking spots.",
-    landlord: {
-      name: "Ahmed Khan",
-      initials: "AK",
-      verified: true,
-      rating: 4.9,
-      phone: "+92 300 1234567",
-      email: "ahmed.khan@havenkey.pk",
-    },
-    amenities: [
-      "Sea View Balcony",
-      "Central HVAC",
-      "Smart Home Automation",
-      "2 Covered Parking",
-      "24/7 Concierge",
-      "Backup Generator",
-    ],
-  },
-  {
-    id: "meadowbrook-dha-lahore",
-    title: "Meadowbrook Modern Villa",
-    category: "villas",
-    transactionType: "sale",
-    price: 78500000,
-    priceFormatted: "PKR 78,500,000",
-    location: "DHA Phase 6, Sector J, Lahore",
-    city: "Lahore",
-    beds: 5,
-    baths: 6,
-    size: "10 Marla (2,250 sq ft)",
-    sizeCategory: "10-marla",
-    featured: true,
-    verified: true,
-    imageUrl:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuCjp4ouN5hN4TFGSXHGIl9pauc-GKzbYmmtkn101f2H9QxMf0MZQw7yDDJn2CFEzLH1yxn3H4XYpajkvO29eoFmsxD7uQlGxQJ-AQMHXcfEVuxD9T2xn_NNa17O4cB5HlqFGr4keQhjq74l9Vk7BGalJMovK_4ub7amUtOPZ32R5m0tyMIhhUQ58dkr8e9f5aUh0sk_age9yyYfLGLjBaXarxSYh9H3SP0UqYKfpsg",
-    imageAlt: "Exterior facade of a modern architectural villa in DHA Lahore with plunge pool",
-    description:
-      "Double-height glass atrium, integrated smart automation, imported Italian kitchen fittings, and solar backup power.",
-    landlord: {
-      name: "Salman Raza",
-      initials: "SR",
-      verified: true,
-      rating: 5.0,
-      phone: "+92 321 9876543",
-      email: "salman.raza@havenkey.pk",
-    },
-    amenities: [
-      "Infinity Plunge Pool",
-      "Solar 15kW System",
-      "Italian Kitchen",
-      "Servant Quarters",
-      "Lush Lawn",
-      "CCTV Security",
-    ],
-  },
-  {
-    id: "margalla-ridge-islamabad",
-    title: "Margalla Ridge Penthouse",
-    category: "apartments",
-    transactionType: "rent",
-    price: 450000,
-    priceFormatted: "PKR 450,000",
-    pricePeriod: "/ mo",
-    location: "Sector F-7/2, Islamabad",
-    city: "Islamabad",
-    beds: 3,
-    baths: 4,
-    size: "14 Marla (3,150 sq ft)",
-    sizeCategory: "1-kanal",
-    featured: true,
-    verified: true,
-    imageUrl:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuDWEKqQ6EzDRn8ZnLIWTUqbfXDGyOFnHLa0mNs6D98xMoDP3bkf42dCQ6z3buSiKT_hFqn5oyvd97M74caoX3pGQCeA90JNS4nKxYkgaLG7fREE59AusRiTYJqMXN5CLA9OeG6hWoCBVWM1l6zSqFc6Z0qPSKd-9sDdcM4ipER3MN5h7tXe7bkAHGHC1NMUyrM6WhwQ1xEjKnT6ixttM7hhLerTAdyvLBOHVNcz8kg",
-    imageAlt: "Luxury modern penthouse terrace in Islamabad with Margalla Hills view",
-    description:
-      "Unobstructed mountain line panoramic exposure, private elevator lobby, wraparound deck, and biometric access.",
-    landlord: {
-      name: "Tariq Mahmood",
-      initials: "TM",
-      verified: true,
-      rating: 4.8,
-      phone: "+92 333 5551234",
-      email: "tariq.m@havenkey.pk",
-    },
-    amenities: [
-      "Margalla Mountain Views",
-      "Private High-Speed Lift",
-      "Fire Pit Terrace",
-      "Biometric Access",
-      "Gym & Sauna",
-      "Valet Parking",
-    ],
-  },
-  {
-    id: "bahria-sanctuary-flat",
-    title: "The Scandinavian Studio Flat",
-    category: "flats",
-    transactionType: "rent",
-    price: 180000,
-    priceFormatted: "PKR 180,000",
-    pricePeriod: "/ mo",
-    location: "Bahria Town Phase 8, Rawalpindi",
-    city: "Rawalpindi",
-    beds: 2,
-    baths: 2,
-    size: "5 Marla (1,125 sq ft)",
-    sizeCategory: "5-marla",
-    featured: false,
-    verified: true,
-    imageUrl:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuAuhCd8y5D67ZcQ8dx5AyvygB9uKVZyBWtH1ObbS54HY8uWlwy8yE_BK_PwcsBm1z3EXKFWHduEhmI4p-meuym6AlmX6Ibr6bM3-oysJZTSDxwsYzdB-VUY9bVBTrJ8ydbaUbW56oq3hgqgqxYUJPXyrHyV_7fYfDdDaR8_KFBvZjBrh8g-_-r4kyUsXQ9v3sI78eNR07ug9n9vX_nDRAihkKc1YpAombcRxyPUxn4",
-    imageAlt: "Scandinavian interior design studio flat with oak wood floors",
-    description:
-      "Minimalist oak interior, walk-in closets, floor-to-ceiling double-glazed windows, and high efficiency appliances.",
-    landlord: {
-      name: "Fatima Noor",
-      initials: "FN",
-      verified: true,
-      rating: 4.9,
-      phone: "+92 301 4448899",
-      email: "fatima.noor@havenkey.pk",
-    },
-    amenities: [
-      "Designer Furnished",
-      "Fiber Internet Ready",
-      "Smart Thermostat",
-      "Secure Lobby",
-      "Rooftop BBQ Lounge",
-    ],
-  },
-  {
-    id: "dha9-prism-plot",
-    title: "1 Kanal Corner Commercial Plot",
-    category: "plots",
-    transactionType: "sale",
-    price: 32000000,
-    priceFormatted: "PKR 32,000,000",
-    location: "DHA Phase 9 Prism, Lahore",
-    city: "Lahore",
-    beds: 0,
-    baths: 0,
-    size: "1 Kanal (4,500 sq ft)",
-    sizeCategory: "1-kanal",
-    featured: false,
-    verified: true,
-    imageUrl:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuBAWv1B3wntgnk-nGQracJPQSt5suV4VVK7ugQ6q19LBB20hDbAtrz4jOAh2H-DSjF8lJsinyz4lgFUOHM0PjbctSdYfBOiSbRU6fcZ3bi8xNPjjD9wEbotrIGp6j8hllatLch3uzrcAYeuSfHYtY1T1K69x5bNnUytM0mPMLyq790bZJpTYan5Lx99I66DVbiV5jDo5vKHRCW1KjbQK92fO4wwo6B9mOhSgEpWBvM",
-    imageAlt: "Wide aerial topography view of demarcated luxury residential plots in DHA",
-    description:
-      "Direct boulevard access, 100ft wide main road frontage, clear title deed with instant DHA transfer authorization.",
-    landlord: {
-      name: "Zubair Hashmi",
-      initials: "ZH",
-      verified: true,
-      rating: 5.0,
-      phone: "+92 302 7772211",
-      email: "zubair.h@havenkey.pk",
-    },
-    amenities: [
-      "Main Boulevard Corner",
-      "Underground Electrification",
-      "Immediate Possession",
-      "Verified Land Registry",
-    ],
-  },
-];
 
 export const mockCategories = [
   {
@@ -310,17 +138,14 @@ export const mockCustomerLeases = [
 ];
 
 export const getStoredProperties = (): Property[] => {
-  if (typeof window === "undefined") return mockProperties;
+  if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem("havenkey_properties");
-    if (!raw) {
-      localStorage.setItem("havenkey_properties", JSON.stringify(mockProperties));
-      return mockProperties;
-    }
+    if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : mockProperties;
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
-    return mockProperties;
+    return [];
   }
 };
 

@@ -25,13 +25,16 @@ export default function PropertiesPage() {
 
   const filteredProperties = useMemo(() => {
     return propertiesList.filter((property) => {
-      if (selectedType !== "all" && property.transactionType !== selectedType) {
+      const propType = property.transactionType || property.listing_type;
+      if (selectedType !== "all" && propType !== selectedType) {
         return false;
       }
-      if (selectedCategory !== "all" && property.category !== selectedCategory) {
+      const propCat = property.category || property.property_type;
+      if (selectedCategory !== "all" && propCat !== selectedCategory) {
         return false;
       }
-      if (selectedCity !== "all" && property.city.toLowerCase() !== selectedCity.toLowerCase()) {
+      const propCity = (property.city || property.location || "").toLowerCase();
+      if (selectedCity !== "all" && !propCity.includes(selectedCity.toLowerCase())) {
         return false;
       }
       if (verifiedOnly && !property.verified) {
@@ -41,8 +44,9 @@ export default function PropertiesPage() {
         const query = searchQuery.toLowerCase();
         const matchesTitle = property.title.toLowerCase().includes(query);
         const matchesLocation = property.location.toLowerCase().includes(query);
-        const matchesDescription = property.description.toLowerCase().includes(query);
-        if (!matchesTitle && !matchesLocation && !matchesDescription) {
+        const matchesAddress = (property.address || "").toLowerCase().includes(query);
+        const matchesDescription = (property.description || "").toLowerCase().includes(query);
+        if (!matchesTitle && !matchesLocation && !matchesAddress && !matchesDescription) {
           return false;
         }
       }
@@ -52,7 +56,7 @@ export default function PropertiesPage() {
       if (sortBy === "price-desc") return b.price - a.price;
       return 0; // featured default
     });
-  }, [selectedType, selectedCategory, selectedCity, verifiedOnly, sortBy, searchQuery]);
+  }, [propertiesList, selectedType, selectedCategory, selectedCity, verifiedOnly, sortBy, searchQuery]);
 
   return (
     <>
@@ -220,6 +224,23 @@ export default function PropertiesPage() {
               {filteredProperties.map((property) => (
                 <PropertyCard key={property.id} property={property} />
               ))}
+            </div>
+          ) : propertiesList.length === 0 ? (
+            <div className="w-full py-16 bg-white rounded-xl border border-[#e7e8ea] text-center p-8">
+              <span className="material-symbols-outlined text-[48px] text-[#8093bb]">
+                real_estate_agent
+              </span>
+              <h3 className="text-lg font-bold text-[#001637] mt-3">No Properties Listed Yet</h3>
+              <p className="text-xs text-[#44474e] mt-1 max-w-md mx-auto">
+                No mock data is pre-loaded. Properties will be sent and displayed here once added via the website or admin dashboard.
+              </p>
+              <Link
+                href="/admin/dashboard"
+                className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-[#076a64] text-white text-xs font-semibold rounded-lg hover:bg-[#00201e] transition-colors"
+              >
+                <span className="material-symbols-outlined text-[16px]">add_business</span>
+                <span>Add First Property in Admin Panel</span>
+              </Link>
             </div>
           ) : (
             <div className="w-full py-16 bg-white rounded-xl border border-[#e7e8ea] text-center p-8">

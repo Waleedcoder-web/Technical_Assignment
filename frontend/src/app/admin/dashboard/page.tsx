@@ -32,18 +32,29 @@ const PRESET_IMAGES = [
 ];
 
 interface PropertyFormData {
+  owner_id: string;
   title: string;
+  description: string;
+  property_type: "villas" | "apartments" | "flats" | "plots";
+  listing_type: "rent" | "sale";
+  price: number;
+  area_value: number;
+  area_unit: "Marla" | "Kanal" | "Sq Ft" | "Sq Yd";
+  bedroom: number;
+  bathroom: number;
+  location: string;
+  address: string;
+  status: "available" | "rented" | "sold" | "pending";
+  imageUrl: string;
+
+  // UI convenience aliases
   category: "villas" | "apartments" | "flats" | "plots";
   transactionType: "rent" | "sale";
-  price: number;
   pricePeriod: string;
-  location: string;
   city: string;
   beds: number;
   baths: number;
   size: string;
-  imageUrl: string;
-  description: string;
   landlordName: string;
   landlordPhone: string;
   landlordEmail: string;
@@ -53,21 +64,31 @@ interface PropertyFormData {
 }
 
 const INITIAL_FORM: PropertyFormData = {
+  owner_id: "usr-admin-01",
   title: "",
+  description: "",
+  property_type: "villas",
+  listing_type: "rent",
+  price: 250000,
+  area_value: 10,
+  area_unit: "Marla",
+  bedroom: 4,
+  bathroom: 4,
+  location: "Lahore",
+  address: "DHA Phase 6, Sector J, Street 4",
+  status: "available",
+  imageUrl: PRESET_IMAGES[0].url,
+
   category: "villas",
   transactionType: "rent",
-  price: 250000,
   pricePeriod: "/ mo",
-  location: "",
   city: "Lahore",
   beds: 4,
   baths: 4,
   size: "10 Marla (2,250 sq ft)",
-  imageUrl: PRESET_IMAGES[0].url,
-  description: "",
-  landlordName: "Waleed Hassan",
+  landlordName: "Admin Owner",
   landlordPhone: "+92 300 1234567",
-  landlordEmail: "waleed@havenkey.pk",
+  landlordEmail: "admin@gmail.com",
   amenitiesStr: "24/7 Security, Backup Generator, Dedicated Parking, Central Air Conditioning",
   featured: false,
   verified: true,
@@ -116,15 +137,18 @@ export default function AdminDashboardPage() {
   // Filtered Properties for Admin View
   const filteredProperties = useMemo(() => {
     return properties.filter((p) => {
-      if (categoryFilter !== "all" && p.category !== categoryFilter) return false;
-      if (typeFilter !== "all" && p.transactionType !== typeFilter) return false;
+      const pCat = p.category || p.property_type;
+      const pType = p.transactionType || p.listing_type;
+      if (categoryFilter !== "all" && pCat !== categoryFilter) return false;
+      if (typeFilter !== "all" && pType !== typeFilter) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchTitle = p.title.toLowerCase().includes(q);
         const matchLoc = p.location.toLowerCase().includes(q);
-        const matchCity = p.city.toLowerCase().includes(q);
-        const matchLandlord = p.landlord?.name?.toLowerCase().includes(q);
-        if (!matchTitle && !matchLoc && !matchCity && !matchLandlord) return false;
+        const matchAddress = (p.address || "").toLowerCase().includes(q);
+        const matchCity = (p.city || p.location || "").toLowerCase().includes(q);
+        const matchLandlord = (p.landlord?.name || "").toLowerCase().includes(q);
+        if (!matchTitle && !matchLoc && !matchAddress && !matchCity && !matchLandlord) return false;
       }
       return true;
     });
@@ -141,25 +165,45 @@ export default function AdminDashboardPage() {
   // Open modal for Edit
   const handleOpenEdit = (property: Property) => {
     setEditingPropertyId(property.id);
+    const pType = ((property.property_type || property.category || "villas") as "villas" | "apartments" | "flats" | "plots");
+    const lType = ((property.listing_type || property.transactionType || "rent") as "rent" | "sale");
+    const beds = property.bedroom ?? property.beds ?? 4;
+    const baths = property.bathroom ?? property.baths ?? 4;
+    const aVal = property.area_value ?? 10;
+    const aUnit = ((property.area_unit || "Marla") as "Marla" | "Kanal" | "Sq Ft" | "Sq Yd");
+    const loc = property.location || "Lahore";
+    const addr = property.address || property.location || "DHA Phase 6, Sector J";
+    const img = property.imageUrl || property.image_url || PRESET_IMAGES[0].url;
+
     setFormData({
+      owner_id: property.owner_id || "usr-admin-01",
       title: property.title,
-      category: property.category,
-      transactionType: property.transactionType,
+      description: property.description || "",
+      property_type: pType,
+      listing_type: lType,
       price: property.price,
-      pricePeriod: property.pricePeriod || (property.transactionType === "rent" ? "/ mo" : ""),
-      location: property.location,
-      city: property.city,
-      beds: property.beds,
-      baths: property.baths,
-      size: property.size,
-      imageUrl: property.imageUrl,
-      description: property.description,
+      area_value: aVal,
+      area_unit: aUnit,
+      bedroom: beds,
+      bathroom: baths,
+      location: loc,
+      address: addr,
+      status: ((property.status || "available") as "available" | "rented" | "sold" | "pending"),
+      imageUrl: img,
+
+      category: pType,
+      transactionType: lType,
+      pricePeriod: property.pricePeriod || (lType === "rent" ? "/ mo" : ""),
+      city: property.city || loc.split(",")[0].trim() || "Lahore",
+      beds: beds,
+      baths: baths,
+      size: property.size || `${aVal} ${aUnit}`,
       landlordName: property.landlord?.name || "Verified Landlord",
       landlordPhone: property.landlord?.phone || "+92 300 0000000",
       landlordEmail: property.landlord?.email || "landlord@havenkey.pk",
       amenitiesStr: (property.amenities || []).join(", "),
-      featured: property.featured,
-      verified: property.verified,
+      featured: property.featured ?? false,
+      verified: property.verified ?? true,
     });
     setFormErrors({});
     setIsModalOpen(true);
@@ -171,17 +215,17 @@ export default function AdminDashboardPage() {
     if (!formData.title.trim() || formData.title.trim().length < 5) {
       errs.title = "Title must be at least 5 characters.";
     }
-    if (!formData.location.trim() || formData.location.trim().length < 4) {
-      errs.location = "Location address is required.";
+    if (!formData.location.trim() || formData.location.trim().length < 2) {
+      errs.location = "City / Major Location is required.";
     }
-    if (!formData.city.trim()) {
-      errs.city = "City is required.";
+    if (!formData.address.trim() || formData.address.trim().length < 4) {
+      errs.address = "Street / Sector address is required.";
     }
     if (!formData.price || formData.price <= 0) {
       errs.price = "Price must be a positive number.";
     }
-    if (!formData.size.trim()) {
-      errs.size = "Size (e.g. 10 Marla) is required.";
+    if (!formData.area_value || formData.area_value <= 0) {
+      errs.area_value = "Area value must be greater than 0.";
     }
     if (!formData.landlordName.trim()) {
       errs.landlordName = "Landlord name is required.";
@@ -191,7 +235,7 @@ export default function AdminDashboardPage() {
   };
 
   // Submit Handler (Create or Update)
-  const handleSaveProperty = (e: React.FormEvent) => {
+  const handleSaveProperty = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateForm()) return;
 
@@ -214,21 +258,36 @@ export default function AdminDashboardPage() {
       // UPDATE existing property
       updatedList = properties.map((item) => {
         if (item.id === editingPropertyId) {
-          return {
+          const updatedItem: Property = {
             ...item,
+            owner_id: formData.owner_id || item.owner_id || "usr-admin-01",
             title: formData.title.trim(),
-            category: formData.category,
-            transactionType: formData.transactionType,
+            description: formData.description.trim() || `${formData.title} situated in prime ${formData.location}.`,
+            property_type: formData.property_type,
+            listing_type: formData.listing_type,
             price: Number(formData.price),
-            priceFormatted: formattedPrice,
-            pricePeriod: formData.transactionType === "rent" ? formData.pricePeriod || "/ mo" : "",
+            area_value: Number(formData.area_value),
+            area_unit: formData.area_unit,
+            bedroom: Number(formData.bedroom),
+            bathroom: Number(formData.bathroom),
             location: formData.location.trim(),
-            city: formData.city.trim(),
-            beds: Number(formData.beds),
-            baths: Number(formData.baths),
-            size: formData.size.trim(),
+            address: formData.address.trim(),
+            status: formData.status,
+            image_url: formData.imageUrl.trim() || PRESET_IMAGES[0].url,
+            updated_at: new Date().toISOString(),
+
+            // Compatibility aliases for UI
+            category: formData.property_type,
+            transactionType: formData.listing_type,
+            priceFormatted: formattedPrice,
+            pricePeriod: formData.listing_type === "rent" ? formData.pricePeriod || "/ mo" : "",
+            city: formData.city.trim() || formData.location.trim(),
+            beds: Number(formData.bedroom),
+            baths: Number(formData.bathroom),
+            size: `${formData.area_value} ${formData.area_unit}`,
+            sizeCategory: formData.area_unit === "Kanal" ? "1-kanal" : "10-marla",
             imageUrl: formData.imageUrl.trim() || PRESET_IMAGES[0].url,
-            description: formData.description.trim() || `${formData.title} situated in prime ${formData.city}.`,
+            imageAlt: formData.title,
             featured: formData.featured,
             verified: formData.verified,
             landlord: {
@@ -241,9 +300,20 @@ export default function AdminDashboardPage() {
             },
             amenities: amenities.length > 0 ? amenities : ["24/7 Security", "Backup Power"],
           };
+          return updatedItem;
         }
         return item;
       });
+
+      // Try background update to backend API
+      try {
+        fetch(`http://localhost:5000/api/properties/${editingPropertyId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(formData),
+        }).catch(() => {});
+      } catch {}
+
       showToast(`Property "${formData.title}" updated successfully!`);
     } else {
       // CREATE new property
@@ -255,23 +325,37 @@ export default function AdminDashboardPage() {
 
       const newProperty: Property = {
         id: newId,
+        owner_id: formData.owner_id || "usr-admin-01",
         title: formData.title.trim(),
-        category: formData.category,
-        transactionType: formData.transactionType,
+        description: formData.description.trim() || `${formData.title} located in ${formData.location}.`,
+        property_type: formData.property_type,
+        listing_type: formData.listing_type,
         price: Number(formData.price),
-        priceFormatted: formattedPrice,
-        pricePeriod: formData.transactionType === "rent" ? formData.pricePeriod || "/ mo" : "",
+        area_value: Number(formData.area_value),
+        area_unit: formData.area_unit,
+        bedroom: Number(formData.bedroom),
+        bathroom: Number(formData.bathroom),
         location: formData.location.trim(),
-        city: formData.city.trim(),
-        beds: Number(formData.beds),
-        baths: Number(formData.baths),
-        size: formData.size.trim(),
-        sizeCategory: formData.size.toLowerCase().includes("kanal") ? "1-kanal" : "10-marla",
-        featured: formData.featured,
-        verified: formData.verified,
+        address: formData.address.trim(),
+        status: formData.status,
+        image_url: formData.imageUrl.trim() || PRESET_IMAGES[0].url,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+
+        // Compatibility aliases for UI
+        category: formData.property_type,
+        transactionType: formData.listing_type,
+        priceFormatted: formattedPrice,
+        pricePeriod: formData.listing_type === "rent" ? formData.pricePeriod || "/ mo" : "",
+        city: formData.city.trim() || formData.location.trim(),
+        beds: Number(formData.bedroom),
+        baths: Number(formData.bathroom),
+        size: `${formData.area_value} ${formData.area_unit}`,
+        sizeCategory: formData.area_unit === "Kanal" ? "1-kanal" : "10-marla",
         imageUrl: formData.imageUrl.trim() || PRESET_IMAGES[0].url,
         imageAlt: formData.title,
-        description: formData.description.trim() || `Newly listed ${formData.category} asset in ${formData.city}. Verified by HavenKey Concierge.`,
+        featured: formData.featured,
+        verified: formData.verified,
         landlord: {
           name: formData.landlordName.trim(),
           initials,
@@ -282,6 +366,15 @@ export default function AdminDashboardPage() {
         },
         amenities: amenities.length > 0 ? amenities : ["24/7 Security", "Gated Community", "Backup Power"],
       };
+
+      // Try background insert to backend API
+      try {
+        fetch("http://localhost:5000/api/properties", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(newProperty),
+        }).catch(() => {});
+      } catch {}
 
       updatedList = [newProperty, ...properties];
       showToast(`Property "${formData.title}" created and published!`);
@@ -947,15 +1040,18 @@ export default function AdminDashboardPage() {
                 {formErrors.title && <p className="text-red-600 text-[11px] mt-1">{formErrors.title}</p>}
               </div>
 
-              {/* Row 2: Category, Type, City */}
+              {/* Row 2: Property Type, Listing Type, Status */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-[#191c1e] mb-1">Category</label>
+                  <label className="block text-xs font-semibold text-[#191c1e] mb-1">
+                    Property Type (property_type) <span className="text-red-500">*</span>
+                  </label>
                   <select
-                    value={formData.category}
+                    value={formData.property_type}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
+                        property_type: e.target.value as "villas" | "apartments" | "flats" | "plots",
                         category: e.target.value as "villas" | "apartments" | "flats" | "plots",
                       })
                     }
@@ -969,12 +1065,15 @@ export default function AdminDashboardPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#191c1e] mb-1">Transaction Type</label>
+                  <label className="block text-xs font-semibold text-[#191c1e] mb-1">
+                    Listing Type (listing_type) <span className="text-red-500">*</span>
+                  </label>
                   <select
-                    value={formData.transactionType}
+                    value={formData.listing_type}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
+                        listing_type: e.target.value as "rent" | "sale",
                         transactionType: e.target.value as "rent" | "sale",
                         pricePeriod: e.target.value === "rent" ? "/ mo" : "",
                       })
@@ -988,19 +1087,22 @@ export default function AdminDashboardPage() {
 
                 <div>
                   <label className="block text-xs font-semibold text-[#191c1e] mb-1">
-                    City <span className="text-red-500">*</span>
+                    Listing Status (status) <span className="text-red-500">*</span>
                   </label>
                   <select
-                    value={formData.city}
-                    onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                    className="w-full h-10 px-3 bg-[#f2f4f6] rounded-lg border border-[#e7e8ea] focus:bg-white outline-none"
+                    value={formData.status}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        status: e.target.value as "available" | "rented" | "sold" | "pending",
+                      })
+                    }
+                    className="w-full h-10 px-3 bg-[#f2f4f6] rounded-lg border border-[#e7e8ea] focus:bg-white outline-none font-semibold text-[#076a64]"
                   >
-                    <option value="Lahore">Lahore</option>
-                    <option value="Karachi">Karachi</option>
-                    <option value="Islamabad">Islamabad</option>
-                    <option value="Rawalpindi">Rawalpindi</option>
-                    <option value="Peshawar">Peshawar</option>
-                    <option value="Multan">Multan</option>
+                    <option value="available">Available</option>
+                    <option value="pending">Pending</option>
+                    <option value="rented">Rented</option>
+                    <option value="sold">Sold</option>
                   </select>
                 </div>
               </div>
@@ -1009,7 +1111,7 @@ export default function AdminDashboardPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-[#191c1e] mb-1">
-                    Price (PKR) <span className="text-red-500">*</span>
+                    Price in PKR (price) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
@@ -1036,65 +1138,142 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
 
-              {/* Row 4: Location Address & Size */}
+              {/* Row 4: Area Value & Area Unit */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-[#191c1e] mb-1">
-                    Location Address <span className="text-red-500">*</span>
+                    Area Value (area_value) <span className="text-red-500">*</span>
                   </label>
                   <input
-                    type="text"
-                    value={formData.location}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                    placeholder="DHA Phase 6, Sector J"
+                    type="number"
+                    min="1"
+                    step="0.5"
+                    value={formData.area_value}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        area_value: Number(e.target.value),
+                        size: `${e.target.value} ${formData.area_unit}`,
+                      })
+                    }
+                    placeholder="10"
                     className={`w-full h-10 px-3 bg-[#f2f4f6] rounded-lg border ${
-                      formErrors.location ? "border-red-500 bg-red-50/20" : "border-[#e7e8ea]"
+                      formErrors.area_value ? "border-red-500 bg-red-50/20" : "border-[#e7e8ea]"
                     } focus:bg-white focus:border-[#076a64] outline-none transition-all`}
                   />
-                  {formErrors.location && <p className="text-red-600 text-[11px] mt-1">{formErrors.location}</p>}
+                  {formErrors.area_value && (
+                    <p className="text-red-600 text-[11px] mt-1">{formErrors.area_value}</p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-[#191c1e] mb-1">
-                    Size / Area Specification <span className="text-red-500">*</span>
+                    Area Unit (area_unit) <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="text"
-                    value={formData.size}
-                    onChange={(e) => setFormData({ ...formData, size: e.target.value })}
-                    placeholder="10 Marla (2,250 sq ft) or 1 Kanal"
-                    className={`w-full h-10 px-3 bg-[#f2f4f6] rounded-lg border ${
-                      formErrors.size ? "border-red-500 bg-red-50/20" : "border-[#e7e8ea]"
-                    } focus:bg-white focus:border-[#076a64] outline-none transition-all`}
-                  />
-                  {formErrors.size && <p className="text-red-600 text-[11px] mt-1">{formErrors.size}</p>}
+                  <select
+                    value={formData.area_unit}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        area_unit: e.target.value as "Marla" | "Kanal" | "Sq Ft" | "Sq Yd",
+                        size: `${formData.area_value} ${e.target.value}`,
+                      })
+                    }
+                    className="w-full h-10 px-3 bg-[#f2f4f6] rounded-lg border border-[#e7e8ea] focus:bg-white outline-none"
+                  >
+                    <option value="Marla">Marla</option>
+                    <option value="Kanal">Kanal</option>
+                    <option value="Sq Ft">Sq Ft</option>
+                    <option value="Sq Yd">Sq Yd</option>
+                  </select>
                 </div>
               </div>
 
               {/* Row 5: Bedrooms & Bathrooms */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-[#191c1e] mb-1">Bedrooms</label>
+                  <label className="block text-xs font-semibold text-[#191c1e] mb-1">
+                    Bedrooms (bedroom)
+                  </label>
                   <input
                     type="number"
                     min="0"
                     max="20"
-                    value={formData.beds}
-                    onChange={(e) => setFormData({ ...formData, beds: Number(e.target.value) })}
+                    value={formData.bedroom}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        bedroom: Number(e.target.value),
+                        beds: Number(e.target.value),
+                      })
+                    }
                     className="w-full h-10 px-3 bg-[#f2f4f6] rounded-lg border border-[#e7e8ea] focus:bg-white outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#191c1e] mb-1">Bathrooms</label>
+                  <label className="block text-xs font-semibold text-[#191c1e] mb-1">
+                    Bathrooms (bathroom)
+                  </label>
                   <input
                     type="number"
                     min="0"
                     max="20"
-                    value={formData.baths}
-                    onChange={(e) => setFormData({ ...formData, baths: Number(e.target.value) })}
+                    value={formData.bathroom}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        bathroom: Number(e.target.value),
+                        baths: Number(e.target.value),
+                      })
+                    }
                     className="w-full h-10 px-3 bg-[#f2f4f6] rounded-lg border border-[#e7e8ea] focus:bg-white outline-none"
                   />
+                </div>
+              </div>
+
+              {/* Row 6: Location (City) & Detailed Street Address */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-[#191c1e] mb-1">
+                    Location / City (location) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.location}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        location: e.target.value,
+                        city: e.target.value.split(",")[0].trim(),
+                      })
+                    }
+                    placeholder="e.g. Lahore, DHA Phase 6"
+                    className={`w-full h-10 px-3 bg-[#f2f4f6] rounded-lg border ${
+                      formErrors.location ? "border-red-500 bg-red-50/20" : "border-[#e7e8ea]"
+                    } focus:bg-white focus:border-[#076a64] outline-none transition-all`}
+                  />
+                  {formErrors.location && (
+                    <p className="text-red-600 text-[11px] mt-1">{formErrors.location}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#191c1e] mb-1">
+                    Detailed Address (address) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.address}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    placeholder="e.g. House 42, Street 7, Sector J"
+                    className={`w-full h-10 px-3 bg-[#f2f4f6] rounded-lg border ${
+                      formErrors.address ? "border-red-500 bg-red-50/20" : "border-[#e7e8ea]"
+                    } focus:bg-white focus:border-[#076a64] outline-none transition-all`}
+                  />
+                  {formErrors.address && (
+                    <p className="text-red-600 text-[11px] mt-1">{formErrors.address}</p>
+                  )}
                 </div>
               </div>
 

@@ -140,11 +140,32 @@ export default function HomePage() {
             </div>
 
             {/* Properties Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {featuredProperties.map((property) => (
-                <PropertyCard key={property.id} property={property} />
-              ))}
-            </div>
+            {featuredProperties.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {featuredProperties.map((property) => (
+                  <PropertyCard key={property.id} property={property} />
+                ))}
+              </div>
+            ) : (
+              <div className="w-full py-12 bg-white rounded-xl border border-[#e7e8ea] text-center p-8">
+                <span className="material-symbols-outlined text-[40px] text-[#8093bb]">
+                  real_estate_agent
+                </span>
+                <h3 className="text-base font-bold text-[#001637] mt-2">
+                  No Featured Properties Yet
+                </h3>
+                <p className="text-xs text-[#44474e] mt-1 max-w-md mx-auto">
+                  Database initialized with zero mock data. Real property listings published through the website or admin portal will automatically show up here.
+                </p>
+                <Link
+                  href="/admin/dashboard"
+                  className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-[#076a64] text-white text-xs font-semibold rounded-lg hover:bg-[#00201e] transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[16px]">add_business</span>
+                  <span>Publish Property in Admin Panel</span>
+                </Link>
+              </div>
+            )}
           </div>
         </section>
 

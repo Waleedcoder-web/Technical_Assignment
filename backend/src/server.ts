@@ -262,18 +262,42 @@ app.post("/api/users/register", async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------
 // 3. Properties API
 // ---------------------------------------------------------------------
-app.get("/api/properties", (req: Request, res: Response) => {
-  const { category, city, type, maxPrice, search } = req.query;
+app.get("/api/properties", async (req: Request, res: Response) => {
+  const { category, property_type, city, type, listing_type, maxPrice, search } = req.query;
+
+  try {
+    const { data, error } = await supabase.from("properties").select("*");
+    if (!error && data && data.length > 0) {
+      return res.json({ success: true, count: data.length, data });
+    }
+  } catch {
+    // Supabase table not created yet or empty, fallback
+  }
+
   let filtered = [...properties];
 
-  if (category) {
-    filtered = filtered.filter((p) => p.category.toLowerCase() === String(category).toLowerCase());
+  const cat = category || property_type;
+  if (cat) {
+    filtered = filtered.filter(
+      (p) =>
+        (p.property_type && p.property_type.toLowerCase() === String(cat).toLowerCase()) ||
+        (p.category && p.category.toLowerCase() === String(cat).toLowerCase())
+    );
   }
   if (city) {
-    filtered = filtered.filter((p) => p.city.toLowerCase() === String(city).toLowerCase());
+    filtered = filtered.filter(
+      (p) =>
+        (p.location && p.location.toLowerCase().includes(String(city).toLowerCase())) ||
+        (p.city && p.city.toLowerCase() === String(city).toLowerCase())
+    );
   }
-  if (type) {
-    filtered = filtered.filter((p) => p.transactionType.toLowerCase() === String(type).toLowerCase());
+  const lType = type || listing_type;
+  if (lType) {
+    filtered = filtered.filter(
+      (p) =>
+        (p.listing_type && p.listing_type.toLowerCase() === String(lType).toLowerCase()) ||
+        (p.transactionType && p.transactionType.toLowerCase() === String(lType).toLowerCase())
+    );
   }
   if (maxPrice) {
     filtered = filtered.filter((p) => p.price <= Number(maxPrice));
@@ -291,7 +315,16 @@ app.get("/api/properties", (req: Request, res: Response) => {
   res.json({ success: true, count: filtered.length, data: filtered });
 });
 
-app.get("/api/properties/:id", (req: Request, res: Response) => {
+app.get("/api/properties/:id", async (req: Request, res: Response) => {
+  try {
+    const { data, error } = await supabase.from("properties").select("*").eq("id", req.params.id).single();
+    if (!error && data) {
+      return res.json({ success: true, data });
+    }
+  } catch {
+    // fallback
+  }
+
   const property = properties.find((p) => p.id === req.params.id);
   if (!property) {
     return res.status(404).json({ success: false, message: `Property ${req.params.id} not found` });
@@ -299,45 +332,128 @@ app.get("/api/properties/:id", (req: Request, res: Response) => {
   res.json({ success: true, data: property });
 });
 
-app.post("/api/properties", (req: Request, res: Response) => {
-  const { title, category, transactionType, price, location, city, beds, baths, size, description, amenities } = req.body;
+app.post("/api/properties", async (req: Request, res: Response) => {
+  const {
+    owner_id,
+    title,
+    description,
+    property_type,
+    category,
+    listing_type,
+    transactionType,
+    price,
+    area_value,
+    area_unit,
+    bedroom,
+    beds,
+    bathroom,
+    baths,
+    location,
+    address,
+    status,
+    image_url,
+    imageUrl,
+  } = req.body;
+
   if (!title || !price || !location) {
     return res.status(400).json({ success: false, message: "Title, Price, and Location are required" });
   }
 
   const newProperty: Property = {
     id: `prop-${Date.now()}`,
+    owner_id: owner_id || undefined,
     title,
-    category: category || "apartments",
-    transactionType: transactionType || "rent",
+    description: description || `${title} located in ${location}.`,
+    property_type: property_type || category || "apartments",
+    listing_type: listing_type || transactionType || "rent",
     price: Number(price),
-    priceFormatted: `PKR ${Number(price).toLocaleString()}`,
-    pricePeriod: transactionType === "sale" ? undefined : "/ mo",
+    area_value: Number(area_value) || 10,
+    area_unit: area_unit || "Marla",
+    bedroom: Number(bedroom || beds || 0),
+    bathroom: Number(bathroom || baths || 0),
     location,
-    city: city || "Karachi",
-    beds: beds || 3,
-    baths: baths || 3,
-    size: size || "1 Kanal",
-    landlordId: "usr-02",
+    address: address || location,
+    status: status || "available",
+    image_url: image_url || imageUrl || "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+
+    // UI compatibility aliases
+    category: property_type || category || "apartments",
+    transactionType: listing_type || transactionType || "rent",
+    priceFormatted: `PKR ${Number(price).toLocaleString()}`,
+    pricePeriod: (listing_type || transactionType) === "sale" ? undefined : "/ mo",
+    beds: Number(bedroom || beds || 0),
+    baths: Number(bathroom || baths || 0),
+    size: `${area_value || 10} ${area_unit || "Marla"}`,
+    city: location,
     verified: true,
     featured: false,
-    imageUrl:
-      "https://lh3.googleusercontent.com/aida-public/AB6AXuDB2zpoWyl8ZcxyZ9VTBmFnJeOqr2YddS6o6SLXrvuRvseNAmS3xoQSGB8k_vY-hA1XZgefrIb33z0cnS8Sku2G_vqjGUakGorvgncrREPjor6Dwog7GWHryfDglOCx7zujV6EkB2G3K6YXem0f0V138qVfm-y-eaPxeXFJYu1BqO8EcnFseQIrgIT236znyncit7FVaY7Y9FFeaJOy3sRJ2gwLjOPuZ-3DHnmL7Vo",
-    description: description || "Modern real estate property with verified ownership titles and escrow rent support.",
-    amenities: amenities || ["Security", "Backup Power", "Parking"],
+    imageUrl: image_url || imageUrl || "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80",
   };
+
+  try {
+    const { data, error } = await supabase.from("properties").insert([{
+      title: newProperty.title,
+      description: newProperty.description,
+      property_type: newProperty.property_type,
+      listing_type: newProperty.listing_type,
+      price: newProperty.price,
+      area_value: newProperty.area_value,
+      area_unit: newProperty.area_unit,
+      bedroom: newProperty.bedroom,
+      bathroom: newProperty.bathroom,
+      location: newProperty.location,
+      address: newProperty.address,
+      status: newProperty.status,
+      image_url: newProperty.image_url,
+    }]).select();
+
+    if (!error && data && data.length > 0) {
+      newProperty.id = data[0].id;
+    }
+  } catch {
+    // In-memory fallback
+  }
 
   properties.unshift(newProperty);
   res.status(201).json({ success: true, message: "Property listed successfully", data: newProperty });
 });
 
-app.delete("/api/properties/:id", (req: Request, res: Response) => {
+app.put("/api/properties/:id", async (req: Request, res: Response) => {
   const index = properties.findIndex((p) => p.id === req.params.id);
   if (index === -1) {
     return res.status(404).json({ success: false, message: "Property not found" });
   }
-  const removed = properties.splice(index, 1);
-  res.json({ success: true, message: "Property removed", data: removed[0] });
+
+  properties[index] = {
+    ...properties[index],
+    ...req.body,
+    updated_at: new Date().toISOString(),
+  };
+
+  try {
+    await supabase.from("properties").update(req.body).eq("id", req.params.id);
+  } catch {
+    // fallback
+  }
+
+  res.json({ success: true, message: "Property updated successfully", data: properties[index] });
+});
+
+app.delete("/api/properties/:id", async (req: Request, res: Response) => {
+  const index = properties.findIndex((p) => p.id === req.params.id);
+  if (index !== -1) {
+    properties.splice(index, 1);
+  }
+
+  try {
+    await supabase.from("properties").delete().eq("id", req.params.id);
+  } catch {
+    // fallback
+  }
+
+  res.json({ success: true, message: "Property removed successfully" });
 });
 
 // ---------------------------------------------------------------------

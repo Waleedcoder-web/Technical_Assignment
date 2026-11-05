@@ -17,15 +17,15 @@ export default function PropertyCard({ property }: PropertyCardProps) {
       {/* Image & Overlays */}
       <div className="relative aspect-[16/10] overflow-hidden bg-[#edeef0]">
         <img
-          src={property.imageUrl}
-          alt={property.imageAlt}
+          src={property.imageUrl || property.image_url || "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80"}
+          alt={property.imageAlt || property.title}
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-[#001637]/70 via-transparent to-transparent pointer-events-none" />
 
         {/* Top Badges */}
         <div className="absolute top-3 left-3 flex items-center gap-1.5 z-10">
-          {property.transactionType === "rent" ? (
+          {(property.transactionType || property.listing_type) === "rent" ? (
             <span className="px-2.5 py-1 bg-[#001637] text-white rounded-md text-xs font-semibold tracking-wide uppercase">
               For Rent
             </span>
@@ -112,21 +112,23 @@ export default function PropertyCard({ property }: PropertyCardProps) {
             <span className="material-symbols-outlined text-[16px] text-[#75777f]">
               bed
             </span>
-            <span className="font-semibold">{property.beds}</span>
+            <span className="font-semibold">{property.beds ?? property.bedroom ?? 0}</span>
             <span className="text-[11px] text-[#44474e]">Beds</span>
           </div>
           <div className="flex items-center justify-center gap-1 text-[#191c1e]">
             <span className="material-symbols-outlined text-[16px] text-[#75777f]">
               bathtub
             </span>
-            <span className="font-semibold">{property.baths}</span>
+            <span className="font-semibold">{property.baths ?? property.bathroom ?? 0}</span>
             <span className="text-[11px] text-[#44474e]">Baths</span>
           </div>
           <div className="flex items-center justify-center gap-1 text-[#191c1e]">
             <span className="material-symbols-outlined text-[16px] text-[#75777f]">
               straighten
             </span>
-            <span className="font-semibold truncate">{property.sizeCategory}</span>
+            <span className="font-semibold truncate">
+              {property.sizeCategory || `${property.area_value ?? 10} ${property.area_unit ?? "Marla"}`}
+            </span>
           </div>
         </div>
 
@@ -134,9 +136,11 @@ export default function PropertyCard({ property }: PropertyCardProps) {
         <div className="flex items-center justify-between pt-1 border-t border-[#edeef0]">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-full bg-[#a1f1e9] text-[#076a64] flex items-center justify-center text-xs font-bold">
-              {property.landlord.initials}
+              {property.landlord?.initials || "PK"}
             </div>
-            <span className="text-xs text-[#44474e]">Verified Landlord</span>
+            <span className="text-xs text-[#44474e]">
+              {property.landlord?.name || "Verified Landlord"}
+            </span>
           </div>
 
           <Link
