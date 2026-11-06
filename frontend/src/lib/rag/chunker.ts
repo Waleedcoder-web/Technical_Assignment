@@ -1,4 +1,4 @@
-import { PDFParse } from "pdf-parse";
+import { extractText } from "unpdf";
 import EmbeddingService, { MODEL_MAX_SEQ_LENGTH } from "./embedding";
 
 export const DEFAULT_CHUNK_SIZE_TOKENS = 200; // within 180–220 range
@@ -26,10 +26,9 @@ export async function extractTextFromFile(
 
   if (isPdf) {
     try {
-      const parser = new PDFParse(new Uint8Array(buffer));
-      const parsed = await parser.getText();
-      const text = typeof parsed === "string" ? parsed : parsed?.text || "";
-      return cleanExtractedText(text);
+      const { text } = await extractText(new Uint8Array(buffer));
+      const combined = Array.isArray(text) ? text.join("\n\n") : (text || "");
+      return cleanExtractedText(combined);
     } catch (err: any) {
       throw new Error(`Failed to extract text from PDF "${filename}": ${err.message}`);
     }
