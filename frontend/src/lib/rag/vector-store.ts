@@ -176,27 +176,41 @@ export async function searchSimilarChunks(
     throw new Error("Query embedding must have exactly 384 dimensions");
   }
 
-  const { data, error } = await supabase.rpc("match_rag_chunks", {
-    query_embedding: queryEmbedding,
-    match_threshold: matchThreshold,
-    match_count: matchCount,
-  });
+  let lastError: any = null;
+  const maxRetries = 3;
 
-  if (error) {
-    throw new Error(`Vector similarity RPC call failed: ${error.message}`);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const { data, error } = await supabase.rpc("match_rag_chunks", {
+        query_embedding: queryEmbedding,
+        match_threshold: matchThreshold,
+        match_count: matchCount,
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      const results: MatchedChunk[] = (data || []).map((row: any) => {
+        const { docId, filename } = parseSourceKey(row.source);
+        return {
+          id: Number(row.id),
+          content: row.content,
+          source: row.source,
+          similarity: Number(row.similarity),
+          docId,
+          filename,
+        };
+      });
+
+      return results;
+    } catch (err: any) {
+      lastError = err;
+      if (attempt < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+      }
+    }
   }
 
-  const results: MatchedChunk[] = (data || []).map((row: any) => {
-    const { docId, filename } = parseSourceKey(row.source);
-    return {
-      id: Number(row.id),
-      content: row.content,
-      source: row.source,
-      similarity: Number(row.similarity),
-      docId,
-      filename,
-    };
-  });
-
-  return results;
+  throw new Error(`Vector similarity RPC call failed: ${lastError?.message || "Network request failed"}`);
 }
