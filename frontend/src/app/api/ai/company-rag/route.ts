@@ -46,12 +46,55 @@ export async function generateGroundedAnswer(
     similarity: Number(similarity.toFixed(4)),
   }));
 
-  // Compiles grounded synthesis of retrieved clauses
-  const synthesizedClauses = chunks
-    .map((c, i) => `[Source ${i + 1} (${c.filename || "Doc"}, Match: ${(c.similarity * 100).toFixed(0)}%)]: ${c.content}`)
-    .join("\n\n");
+  // Structure and format retrieved content into executive-ready sections
+  const primaryContent = chunks[0].content.trim();
 
-  const answer = `Based on HavenKey's official company documentation:\n\n${chunks[0].content}\n\n*Reference: ${sources.map((s) => s.filename).join(", ")}*`;
+  // Split into readable sentences/clauses
+  const sentences = primaryContent
+    .split(/(?<=[.?!])\s+|\n+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 5);
+
+  const formattedLines: string[] = [];
+
+  formattedLines.push(`### 📄 Verified Company Documentation`);
+  formattedLines.push(`Here is the official HavenKey policy regarding **"${question}"**:\n`);
+
+  if (sentences.length <= 2) {
+    formattedLines.push(`> ${sentences.join(" ")}\n`);
+  } else {
+    // 1. Executive Summary
+    formattedLines.push(`**Key Overview:**\n${sentences[0]}\n`);
+
+    // 2. Bulleted Provisions
+    formattedLines.push(`**Key Provisions & Requirements:**`);
+    const provisions = sentences.slice(1, 5);
+    for (const item of provisions) {
+      formattedLines.push(`• ${item}`);
+    }
+    formattedLines.push("");
+  }
+
+  // 3. Supporting context if multiple chunks retrieved
+  if (chunks.length > 1) {
+    const secondarySentences = chunks[1].content
+      .split(/(?<=[.?!])\s+|\n+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 10);
+
+    if (secondarySentences.length > 0) {
+      formattedLines.push(`**Additional Verified Terms:**`);
+      formattedLines.push(`• ${secondarySentences[0]}`);
+      formattedLines.push("");
+    }
+  }
+
+  // 4. Citation footer
+  const docNames = sources.map((s) => `\`${s.filename}\``).join(", ");
+  formattedLines.push(`---`);
+  formattedLines.push(`📌 *Verified directly from official company records: ${docNames}*`);
+
+  const answer = formattedLines.join("\n");
 
   return {
     answer,

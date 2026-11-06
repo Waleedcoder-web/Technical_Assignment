@@ -17,6 +17,93 @@ interface ChatMessage {
   isRAG?: boolean;
 }
 
+function renderFormattedInline(text: string) {
+  const parts = text.split(/(\*\*.*?\*\*|\*.*?\*|`.*?`)/g);
+
+  return parts.map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return (
+        <strong key={i} className="font-bold text-[#001637]">
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    if (part.startsWith("*") && part.endsWith("*")) {
+      return (
+        <em key={i} className="text-[#75777f] italic text-[11px]">
+          {part.slice(1, -1)}
+        </em>
+      );
+    }
+    if (part.startsWith("`") && part.endsWith("`")) {
+      return (
+        <code key={i} className="px-1.5 py-0.5 bg-white border border-[#e7e8ea] rounded text-[11px] font-mono text-[#001637]">
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    return part;
+  });
+}
+
+function FormattedMessageContent({ text, isUser }: { text: string; isUser: boolean }) {
+  if (isUser) {
+    return <p className="whitespace-pre-line text-sm">{text}</p>;
+  }
+
+  const lines = text.split("\n");
+
+  return (
+    <div className="space-y-1.5 text-xs leading-relaxed">
+      {lines.map((line, idx) => {
+        const trimmed = line.trim();
+        if (!trimmed) return <div key={idx} className="h-1" />;
+
+        // Section Heading
+        if (trimmed.startsWith("### ")) {
+          return (
+            <h4 key={idx} className="text-sm font-bold text-[#001637] font-plus-jakarta mt-2 mb-1 flex items-center gap-1.5">
+              {trimmed.replace("### ", "")}
+            </h4>
+          );
+        }
+
+        // Horizontal Rule
+        if (trimmed === "---") {
+          return <hr key={idx} className="border-[#e7e8ea] my-2" />;
+        }
+
+        // Blockquote
+        if (trimmed.startsWith("> ")) {
+          return (
+            <blockquote key={idx} className="border-l-2 border-[#076a64] pl-3 py-1 my-1.5 bg-white/70 rounded-r-lg italic text-[#001637] text-xs">
+              {renderFormattedInline(trimmed.replace("> ", ""))}
+            </blockquote>
+          );
+        }
+
+        // Bullet list item
+        if (trimmed.startsWith("• ") || trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+          const bulletText = trimmed.replace(/^[•\-\*]\s+/, "");
+          return (
+            <div key={idx} className="flex items-start gap-2 text-xs text-[#191c1e] my-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#076a64] mt-1.5 shrink-0" />
+              <span>{renderFormattedInline(bulletText)}</span>
+            </div>
+          );
+        }
+
+        // Standard paragraph
+        return (
+          <p key={idx} className="text-xs text-[#191c1e]">
+            {renderFormattedInline(trimmed)}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function AiAssistantPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -242,7 +329,7 @@ export default function AiAssistantPage() {
                           : "bg-[#f2f4f6] text-[#191c1e] rounded-tl-xs border border-[#e7e8ea]"
                       }`}
                     >
-                      <p className="whitespace-pre-line">{msg.text}</p>
+                      <FormattedMessageContent text={msg.text} isUser={msg.sender === "user"} />
 
                       {/* Grounded RAG Sources */}
                       {msg.sources && msg.sources.length > 0 && (
