@@ -39,6 +39,7 @@ RUN npm install --omit=dev
 # Copy compiled Next.js build and assets
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/models ./models
 COPY --from=builder /app/next.config.ts ./next.config.ts
 
 EXPOSE 3000

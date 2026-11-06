@@ -29,11 +29,14 @@ services:
     restart: always
     ports:
       - "3000:3000"
+    env_file:
+      - ./frontend/.env.local
     environment:
       - PORT=3000
       - NODE_ENV=production
       - NEXT_PUBLIC_SUPABASE_URL=https://zhaxrezorucqfdxwxvme.supabase.co
       - NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_EieSlOPQetQvRD6igkpppA_DasiapBf
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-sb_secret_x6QmOfNh0BRs52w36btTXA_9b6_OYF4}
     depends_on:
       - backend
     networks:
