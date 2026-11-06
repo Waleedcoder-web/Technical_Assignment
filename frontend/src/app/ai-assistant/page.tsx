@@ -82,6 +82,21 @@ function FormattedMessageContent({ text, isUser }: { text: string; isUser: boole
           );
         }
 
+        // Numbered list item (1. 2. 3.)
+        const numMatch = trimmed.match(/^(\d+)\.\s+(.*)/);
+        if (numMatch) {
+          const num = numMatch[1];
+          const textAfter = numMatch[2];
+          return (
+            <div key={idx} className="flex items-start gap-2.5 text-xs text-[#191c1e] my-1.5">
+              <span className="w-5 h-5 rounded-full bg-[#e6f7f6] text-[#076a64] font-bold text-[10px] flex items-center justify-center shrink-0 border border-[#a1f1e9] mt-0.5">
+                {num}
+              </span>
+              <span className="pt-0.5">{renderFormattedInline(textAfter)}</span>
+            </div>
+          );
+        }
+
         // Bullet list item
         if (trimmed.startsWith("• ") || trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
           const bulletText = trimmed.replace(/^[•\-\*]\s+/, "");

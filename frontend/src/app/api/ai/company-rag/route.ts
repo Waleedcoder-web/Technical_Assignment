@@ -14,6 +14,18 @@ export const DEFAULT_MATCH_COUNT = 5;
  * Designed as a pluggable adapter so an external LLM (e.g. Qwen 2.5, OpenAI, Groq)
  * can be plugged in directly without modifying retrieval.
  */
+function cleanAndCapitalize(str: string): string {
+  const cleaned = str
+    .replace(/^[•\-\*\d\.\s:;]+/, "")
+    .replace(/[•\u2022\u25E6\u2023\u25C9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/[:;]+$/, "")
+    .trim();
+
+  if (!cleaned) return "";
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1) + (cleaned.endsWith(".") ? "" : ".");
+}
+
 export async function generateGroundedAnswer(
   question: string,
   chunks: MatchedChunk[]
@@ -46,53 +58,56 @@ export async function generateGroundedAnswer(
     similarity: Number(similarity.toFixed(4)),
   }));
 
-  // Structure and format retrieved content into executive-ready sections
-  const primaryContent = chunks[0].content.trim();
+  // Clean primary chunk text of initial fragments or section numbers
+  let rawText = chunks[0].content
+    .replace(/^(policies and law\.\s*|\d+\.\s*|[•\-\*]\s*)/i, "")
+    .trim();
 
-  // Split into readable sentences/clauses
-  const sentences = primaryContent
+  // Split into raw sentences and bullet items
+  const rawSegments = rawText
+    .replace(/[•\u2022\u25E6\u2023\u25C9]+/g, "\n")
     .split(/(?<=[.?!])\s+|\n+/)
     .map((s) => s.trim())
-    .filter((s) => s.length > 5);
+    .filter((s) => s.length > 8);
+
+  const cleanItems: string[] = [];
+  let overview = "";
+
+  for (const seg of rawSegments) {
+    const cleaned = cleanAndCapitalize(seg);
+    if (!cleaned || cleaned.length < 10) continue;
+
+    if (!overview && cleaned.length > 25 && !cleaned.toLowerCase().includes("including")) {
+      overview = cleaned;
+    } else {
+      // Avoid duplicate or fragment phrases
+      if (!cleanItems.includes(cleaned)) {
+        cleanItems.push(cleaned);
+      }
+    }
+  }
+
+  // Fallback overview if needed
+  if (!overview && cleanItems.length > 0) {
+    overview = cleanItems.shift() || "";
+  }
 
   const formattedLines: string[] = [];
 
   formattedLines.push(`### 📄 Verified Company Documentation`);
   formattedLines.push(`Here is the official HavenKey policy regarding **"${question}"**:\n`);
 
-  if (sentences.length <= 2) {
-    formattedLines.push(`> ${sentences.join(" ")}\n`);
-  } else {
-    // 1. Executive Summary
-    formattedLines.push(`**Key Overview:**\n${sentences[0]}\n`);
+  if (overview) {
+    formattedLines.push(`**Key Overview:**\n${overview}\n`);
+  }
 
-    // 2. Bulleted Provisions
+  if (cleanItems.length > 0) {
     formattedLines.push(`**Key Provisions & Requirements:**`);
-    const provisions = sentences.slice(1, 5);
-    for (const item of provisions) {
-      formattedLines.push(`• ${item}`);
-    }
-    formattedLines.push("");
+    const numberedPoints = cleanItems.slice(0, 6);
+    numberedPoints.forEach((point, idx) => {
+      formattedLines.push(`${idx + 1}. ${point}`);
+    });
   }
-
-  // 3. Supporting context if multiple chunks retrieved
-  if (chunks.length > 1) {
-    const secondarySentences = chunks[1].content
-      .split(/(?<=[.?!])\s+|\n+/)
-      .map((s) => s.trim())
-      .filter((s) => s.length > 10);
-
-    if (secondarySentences.length > 0) {
-      formattedLines.push(`**Additional Verified Terms:**`);
-      formattedLines.push(`• ${secondarySentences[0]}`);
-      formattedLines.push("");
-    }
-  }
-
-  // 4. Citation footer
-  const docNames = sources.map((s) => `\`${s.filename}\``).join(", ");
-  formattedLines.push(`---`);
-  formattedLines.push(`📌 *Verified directly from official company records: ${docNames}*`);
 
   const answer = formattedLines.join("\n");
 
