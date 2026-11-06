@@ -58,58 +58,143 @@ export async function generateGroundedAnswer(
     similarity: Number(similarity.toFixed(4)),
   }));
 
-  // Clean primary chunk text of initial fragments or section numbers
-  let rawText = chunks[0].content
-    .replace(/^(policies and law\.\s*|\d+\.\s*|[•\-\*]\s*)/i, "")
-    .trim();
+  // Combine top matching chunk context
+  const fullContext = chunks.slice(0, 2).map((c) => c.content).join(" ");
 
-  // Split into raw sentences and bullet items
-  const rawSegments = rawText
-    .replace(/[•\u2022\u25E6\u2023\u25C9]+/g, "\n")
-    .split(/(?<=[.?!])\s+|\n+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 8);
+  // 1. Extract clean numbered steps if present
+  const numberedStepsRegex = /(?:^|\s)(\d+)\.\s+([^0-9\n]+?)(?=(?:\s+\d+\.|$|\n))/g;
+  const rawNumberedMatches: string[] = [];
+  let numMatch;
+  while ((numMatch = numberedStepsRegex.exec(fullContext)) !== null) {
+    const raw = numMatch[2]
+      .replace(/^[•\-\*\s]+/, "")
+      .replace(/[•\-\*\s]+$/, "")
+      .trim();
 
-  const cleanItems: string[] = [];
-  let overview = "";
-
-  for (const seg of rawSegments) {
-    const cleaned = cleanAndCapitalize(seg);
-    if (!cleaned || cleaned.length < 10) continue;
-
-    if (!overview && cleaned.length > 25 && !cleaned.toLowerCase().includes("including")) {
-      overview = cleaned;
-    } else {
-      // Avoid duplicate or fragment phrases
-      if (!cleanItems.includes(cleaned)) {
-        cleanItems.push(cleaned);
+    // Skip section headers or intro clauses ending in colons
+    if (
+      raw.length > 5 &&
+      !raw.endsWith(":") &&
+      !/^(about havenkey|our services|user registration|property listing|property buying|property renting|agreement policy|tenant responsibilities|payment policy|complaint and issue|complaint review|admin and management|user conduct|privacy and data|platform disclaimer)/i.test(raw)
+    ) {
+      // Isolate strictly the first complete sentence
+      const firstSentence = raw.split(/(?<=[.?!])\s+/)[0].replace(/[•\-\*\s]+$/, "").trim();
+      if (firstSentence.length > 5 && !firstSentence.endsWith(":")) {
+        rawNumberedMatches.push(firstSentence);
       }
     }
   }
 
-  // Fallback overview if needed
-  if (!overview && cleanItems.length > 0) {
-    overview = cleanItems.shift() || "";
+  // 2. Identify the most accurate introductory lead sentence
+  let cleanLead = "";
+
+  // If we have a sequence of numbered steps, check for the specific introductory clause preceding step 1
+  if (rawNumberedMatches.length >= 2) {
+    const introBeforeListMatch = /(?:[\d]+\.\s+)?([^.\n]+?:\s*)1\./i.exec(fullContext);
+    if (introBeforeListMatch) {
+      let candidate = introBeforeListMatch[1]
+        .replace(/^[a-z\s]+(policy|process|guide|terms)\s+/i, "")
+        .replace(/^[•\-\*\s\d\.]+/, "")
+        .replace(/:\s*$/, "")
+        .trim();
+      if (candidate.length > 5) {
+        cleanLead = candidate.charAt(0).toUpperCase() + candidate.slice(1) + ":";
+      }
+    }
   }
 
-  const formattedLines: string[] = [];
+  // Fallback to query keyword matching if cleanLead not established
+  if (!cleanLead) {
+    const stopWords = new Set(["what", "when", "where", "which", "does", "have", "with", "from", "that", "this", "your", "into", "after"]);
+    const qTokens = question
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, "")
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !stopWords.has(w));
 
-  formattedLines.push(`### 📄 Verified Company Documentation`);
-  formattedLines.push(`Here is the official HavenKey policy regarding **"${question}"**:\n`);
+    const stems = qTokens.map((w) => w.replace(/(ing|ed|es|s)$/, ""));
 
-  if (overview) {
-    formattedLines.push(`**Key Overview:**\n${overview}\n`);
+    const sentences = fullContext
+      .replace(/[•\u2022\u25E6\u2023\u25C9]+/g, "\n")
+      .split(/(?<=[.?!])\s+|\n+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 15 && !s.startsWith("•"));
+
+    let bestLead = "";
+    let highestScore = -1;
+
+    for (const s of sentences) {
+      const sLower = s.toLowerCase();
+      let score = 0;
+      for (const stem of stems) {
+        if (sLower.includes(stem)) score += 3;
+      }
+      if (
+        score > highestScore &&
+        !sLower.startsWith("incorrect property information") &&
+        !sLower.includes("fake or misleading")
+      ) {
+        highestScore = score;
+        bestLead = s;
+      }
+    }
+
+    if (bestLead) {
+      cleanLead = bestLead
+        .replace(/^\d+\.\s*/, "")
+        .replace(/^[•\-\*\s]+/, "")
+        .replace(/:\s*\d+\.?$/, "")
+        .replace(/:\s*$/, "")
+        .trim();
+
+      if (cleanLead.length > 5) {
+        cleanLead = cleanLead.charAt(0).toUpperCase() + cleanLead.slice(1);
+        if (!cleanLead.endsWith(".") && !cleanLead.endsWith(":")) {
+          cleanLead += ":";
+        }
+      }
+    }
   }
 
-  if (cleanItems.length > 0) {
-    formattedLines.push(`**Key Provisions & Requirements:**`);
-    const numberedPoints = cleanItems.slice(0, 6);
-    numberedPoints.forEach((point, idx) => {
-      formattedLines.push(`${idx + 1}. ${point}`);
+  if (!cleanLead || cleanLead.length <= 5) {
+    cleanLead = `According to HavenKey's official documentation:`;
+  }
+
+  const lines: string[] = [];
+  lines.push(cleanLead);
+  lines.push("");
+
+  // 3. Assemble clean numbered items (1, 2, 3...)
+  if (rawNumberedMatches.length >= 2) {
+    rawNumberedMatches.slice(0, 6).forEach((item, idx) => {
+      const formattedItem = item.charAt(0).toUpperCase() + item.slice(1).replace(/\.?$/, ".");
+      lines.push(`${idx + 1}. ${formattedItem}`);
     });
+  } else {
+    // Collect clean distinct provisions
+    const bulletItems = fullContext
+      .replace(/[•\u2022\u25E6\u2023\u25C9]+/g, "\n")
+      .split(/\n+/)
+      .map((s) => s.replace(/^[•\-\*\d\.\s]+/, "").trim())
+      .filter((s) => s.length > 12 && !s.toLowerCase().startsWith("including"));
+
+    const distinct = Array.from(new Set(bulletItems)).slice(0, 6);
+    if (distinct.length > 0) {
+      distinct.forEach((item, idx) => {
+        const formattedItem = item.charAt(0).toUpperCase() + item.slice(1).replace(/\.?$/, ".");
+        lines.push(`${idx + 1}. ${formattedItem}`);
+      });
+    } else {
+      const sentences = fullContext
+        .replace(/[•\u2022\u25E6\u2023\u25C9]+/g, "\n")
+        .split(/(?<=[.?!])\s+|\n+/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 10);
+      lines.push(sentences.slice(0, 4).join(" "));
+    }
   }
 
-  const answer = formattedLines.join("\n");
+  const answer = lines.join("\n").trim();
 
   return {
     answer,
