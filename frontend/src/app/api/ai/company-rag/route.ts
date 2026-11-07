@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import EmbeddingService from "@/lib/rag/embedding";
 import { searchSimilarChunks, MatchedChunk } from "@/lib/rag/vector-store";
+import LocalLLMService from "@/lib/rag/llm";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -229,8 +230,16 @@ export async function POST(req: Request) {
     // 2. Call match_rag_chunks RPC in Supabase
     const matchedChunks = await searchSimilarChunks(queryEmbedding, threshold, matchCount);
 
-    // 3. Pass retrieved context to modular answer-generation layer
-    const { answer, grounded, sources } = await generateGroundedAnswer(question, matchedChunks);
+    // 3. Pass retrieved context to local Qwen LLM service
+    let llmResult;
+    try {
+      llmResult = await LocalLLMService.generateAnswer(question, matchedChunks);
+    } catch (llmErr: any) {
+      console.warn("[company-rag] Local LLM fallback triggered:", llmErr.message);
+      llmResult = await generateGroundedAnswer(question, matchedChunks);
+    }
+
+    const { answer, grounded, sources } = llmResult;
 
     return NextResponse.json({
       success: true,
@@ -246,6 +255,7 @@ export async function POST(req: Request) {
         similarity: Number(c.similarity.toFixed(4)),
         content: c.content,
       })),
+      timing: (llmResult as any).timing,
     });
   } catch (err: any) {
     return NextResponse.json(

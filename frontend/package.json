@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "setup:model": "node scripts/download_model.js",
+    "setup:llm": "node scripts/download_llm.js",
     "lint": "eslint"
   },
   "dependencies": {
