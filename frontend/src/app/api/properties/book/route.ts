@@ -140,37 +140,7 @@ export async function POST(req: Request) {
     let agreementId: string | null = null;
     let dbPersisted = false;
 
-    // 1. Persist in agreements table (Digital Tenancy / Purchase Token Reservation)
-    try {
-      const { data: agrInserted, error: agrErr } = await supabaseAdmin
-        .from("agreements")
-        .insert([
-          {
-            property_id: propId,
-            owner_id: ownerId,
-            tenant_id: sanitizedUserId,
-            start_date: sDate,
-            end_date: lType === "rent" ? calculatedEndDate : sDate,
-            monthly_rent: lType === "rent" ? finalRent : propertyPrice,
-            security_deposit: lType === "rent" ? finalDeposit : finalToken,
-            agreement_doc: `HAVENKEY-${lType.toUpperCase()}-BOOKING-${bookingRecordId.slice(0, 8)}`,
-            status: "pending",
-          },
-        ])
-        .select()
-        .maybeSingle();
-
-      if (!agrErr && agrInserted) {
-        agreementId = agrInserted.id;
-        dbPersisted = true;
-      } else if (agrErr) {
-        console.warn("[BookingAPI] Supabase agreements insert warning:", agrErr.message);
-      }
-    } catch (agrErr: any) {
-      console.warn("[BookingAPI] Exception inserting into agreements:", agrErr.message);
-    }
-
-    // 2. Persist in bookings table for tracking
+    // 1. Persist in bookings table for tracking
     try {
       const { error: bkErr } = await supabaseAdmin
         .from("bookings")
@@ -197,9 +167,61 @@ export async function POST(req: Request) {
       console.warn("[BookingAPI] Exception inserting into bookings:", bkErr.message);
     }
 
+    // 2. Persist in agreements table (Digital Tenancy / Purchase Token Reservation)
+    try {
+      const { data: agrInserted, error: agrErr } = await supabaseAdmin
+        .from("agreements")
+        .insert([
+          {
+            property_id: propId,
+            owner_id: ownerId,
+            tenant_id: sanitizedUserId,
+            booking_id: bookingRecordId,
+            start_date: sDate,
+            end_date: lType === "rent" ? calculatedEndDate : sDate,
+            monthly_rent: lType === "rent" ? finalRent : propertyPrice,
+            security_deposit: lType === "rent" ? finalDeposit : finalToken,
+            agreement_doc: `HAVENKEY-${lType.toUpperCase()}-BOOKING-${bookingRecordId.slice(0, 8)}`,
+            status: "pending",
+          },
+        ])
+        .select()
+        .maybeSingle();
+
+      if (!agrErr && agrInserted) {
+        agreementId = agrInserted.id;
+        dbPersisted = true;
+      } else if (agrErr) {
+        console.warn("[BookingAPI] Supabase agreements insert warning:", agrErr.message);
+      }
+    } catch (agrErr: any) {
+      console.warn("[BookingAPI] Exception inserting into agreements:", agrErr.message);
+    }
+
+    // 3. Automatically update property status to 'not available' in Supabase
+    let propertyStatusUpdated = false;
+    try {
+      const { error: propUpdateErr } = await supabaseAdmin
+        .from("properties")
+        .update({ status: "not available" })
+        .eq("id", propId);
+
+      if (!propUpdateErr) {
+        propertyStatusUpdated = true;
+        console.log(`[BookingAPI] Property ${propId} marked as 'not available' in Supabase.`);
+      } else {
+        console.warn("[BookingAPI] Supabase property status update warning:", propUpdateErr.message);
+      }
+    } catch (propErr: any) {
+      console.warn("[BookingAPI] Exception updating property status:", propErr.message);
+    }
+
     // Prepare email data payload
     const emailPayload = {
       bookingId: agreementId || bookingRecordId,
+      rawBookingId: bookingRecordId,
+      agreementId,
+      propertyId: propId,
       propertyTitle,
       propertyLocation,
       listingType: lType,
@@ -229,18 +251,22 @@ export async function POST(req: Request) {
 
     const isRent = lType === "rent";
     const confirmationMsg = isRent
-      ? "Your online rental booking has been registered! Verification emails have been sent to you and the property owner."
-      : "Your online purchase reservation has been registered! Verification emails have been sent to you and the property owner.";
+      ? "Your online rental booking has been registered! Property status changed to Not Available. Verification emails have been sent to you and the property owner."
+      : "Your online purchase reservation has been registered! Property status changed to Not Available. Verification emails have been sent to you and the property owner.";
 
     return NextResponse.json(
       {
         success: true,
         message: confirmationMsg,
+        propertyStatus: "not available",
         booking: {
           id: agreementId || bookingRecordId,
+          bookingId: bookingRecordId,
           agreementId,
+          propertyId: propId,
           propertyTitle,
           propertyLocation,
+          propertyStatus: "not available",
           listingType: lType,
           startDate: sDate,
           endDate: calculatedEndDate,
@@ -251,6 +277,7 @@ export async function POST(req: Request) {
           user: { name, email, phone },
           owner: { name: ownerName, email: ownerEmail },
           dbPersisted,
+          propertyStatusUpdated,
           emailsSent: {
             user: userEmailRes.success,
             owner: ownerEmailRes.success,

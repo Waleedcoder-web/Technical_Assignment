@@ -2,6 +2,7 @@ import nodemailer from "nodemailer";
 
 export interface BookingEmailData {
   bookingId: string;
+  propertyId?: string;
   propertyTitle: string;
   propertyLocation: string;
   listingType?: "rent" | "sale" | string;
@@ -73,6 +74,10 @@ export async function sendUserBookingConfirmation(data: BookingEmailData): Promi
     badgeText = "Purchase Token Reservation Pending";
     subjectText = `[HavenKey] Property Purchase Reservation: ${data.propertyTitle}`;
   }
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const verifyYesUrl = `${baseUrl}/bookings/verify?id=${encodeURIComponent(data.bookingId)}&action=yes${data.propertyId ? `&propertyId=${encodeURIComponent(data.propertyId)}` : ""}`;
+  const verifyNoUrl = `${baseUrl}/bookings/verify?id=${encodeURIComponent(data.bookingId)}&action=no${data.propertyId ? `&propertyId=${encodeURIComponent(data.propertyId)}` : ""}`;
 
   const htmlContent = `
 <!DOCTYPE html>
@@ -179,6 +184,34 @@ export async function sendUserBookingConfirmation(data: BookingEmailData): Promi
             <td style="padding: 6px 0; color: #191c1e;">${data.ownerName} (${data.ownerEmail})</td>
           </tr>
         </table>
+      </div>
+
+      <!-- User Yes / No Verification Action Block -->
+      <div style="background: #ffffff; border: 2px solid #076a64; border-radius: 10px; padding: 22px 20px; margin: 24px 0; text-align: center; box-shadow: 0 4px 12px rgba(7, 106, 100, 0.08);">
+        <h4 style="margin: 0 0 8px 0; color: #001637; font-size: 16px; font-weight: 700;">Action Required: Do You Confirm This Booking?</h4>
+        <p style="margin: 0 0 16px 0; font-size: 13px; color: #44474e; line-height: 1.5;">
+          This property has been temporarily marked as <strong>Not Available</strong>. Please submit your answer below to verify or cancel your reservation:
+        </p>
+        
+        <table style="margin: 0 auto; border-collapse: separate; border-spacing: 12px 0;">
+          <tr>
+            <td>
+              <a href="${verifyYesUrl}" style="display: inline-block; background-color: #076a64; color: #ffffff; font-weight: 700; font-size: 13px; text-decoration: none; padding: 12px 24px; border-radius: 6px; box-shadow: 0 2px 4px rgba(7, 106, 100, 0.2);">
+                &#x2714; YES &mdash; Confirm Booking
+              </a>
+            </td>
+            <td>
+              <a href="${verifyNoUrl}" style="display: inline-block; background-color: #ba1a1a; color: #ffffff; font-weight: 700; font-size: 13px; text-decoration: none; padding: 12px 24px; border-radius: 6px; box-shadow: 0 2px 4px rgba(186, 26, 26, 0.2);">
+                &#x2716; NO &mdash; Cancel Booking
+              </a>
+            </td>
+          </tr>
+        </table>
+
+        <p style="margin: 14px 0 0 0; font-size: 11px; color: #75777f; line-height: 1.4;">
+          <strong>Selecting YES:</strong> Verifies your booking and activates your digital agreement.<br />
+          <strong>Selecting NO:</strong> Cancels this booking and automatically releases the property back to <em>Available</em>.
+        </p>
       </div>
 
       <p style="font-size: 12px; color: #75777f; line-height: 1.5;">
@@ -336,6 +369,16 @@ export async function sendOwnerBookingNotification(data: BookingEmailData): Prom
               : ""
           }
         </table>
+      </div>
+
+      <!-- Property Status & Verification Notice -->
+      <div style="background-color: #fcf1e5; border-left: 4px solid #ba1a1a; padding: 12px 16px; border-radius: 4px; margin: 18px 0;">
+        <p style="margin: 0; color: #852a00; font-size: 13px; font-weight: 600;">
+          Listing Status: Marked as <em>Not Available</em> (Booked)
+        </p>
+        <p style="margin: 4px 0 0 0; color: #53433a; font-size: 12px; line-height: 1.4;">
+          The property is now reserved. The applicant has been sent a verification email requiring them to confirm with <strong>YES</strong> (finalize booking) or <strong>NO</strong> (cancel &amp; release back to available).
+        </p>
       </div>
 
       <p style="font-size: 13px; color: #44474e; line-height: 1.5;">

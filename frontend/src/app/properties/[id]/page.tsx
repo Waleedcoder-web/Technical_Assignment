@@ -4,7 +4,7 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import Navbar from "@/components/layout/navbar";
 import Footer from "@/components/layout/footer";
-import { Property, getStoredProperties, DEFAULT_PROPERTY_PLACEHOLDER } from "@/lib/mock-data";
+import { Property, getStoredProperties, saveStoredProperties, DEFAULT_PROPERTY_PLACEHOLDER } from "@/lib/mock-data";
 
 export default function PropertyDetailPage({
   params,
@@ -29,6 +29,7 @@ export default function PropertyDetailPage({
   const [userPhone, setUserPhone] = useState("");
   const [notes, setNotes] = useState("");
   const [agreedToTerms, setAgreedToTerms] = useState(true);
+  const [userAnswer, setUserAnswer] = useState<"yes" | "no">("yes");
   const [bookingTypesList, setBookingTypesList] = useState<
     { slug: string; type_name: string; description?: string; icon?: string }[]
   >([
@@ -46,6 +47,24 @@ export default function PropertyDetailPage({
     const found = list.find((p) => p.id === id) || null;
     setProperty(found);
     setIsLoading(false);
+
+    // Fetch live status & data from Supabase API to ensure up-to-date availability
+    fetch(`/api/properties/${id}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.data) {
+          setProperty((prev) => {
+            if (!prev) return data.data;
+            return {
+              ...prev,
+              status: data.data.status || prev.status,
+              title: data.data.title || prev.title,
+              price: data.data.price || prev.price,
+            };
+          });
+        }
+      })
+      .catch((err) => console.warn("Failed to fetch live property status:", err));
 
     // Auto-prefill authenticated user details from localStorage
     if (typeof window !== "undefined") {
@@ -91,6 +110,10 @@ export default function PropertyDetailPage({
     }
     if (!agreedToTerms) {
       setBookingError("Please accept the terms and agreement policies to proceed.");
+      return;
+    }
+    if (userAnswer !== "yes") {
+      setBookingError("Please select 'YES — I agree & confirm' to proceed with your booking reservation.");
       return;
     }
 
@@ -143,6 +166,7 @@ export default function PropertyDetailPage({
           timeSlot,
           notes,
           agreedToTerms,
+          userAnswer,
           userId: currentUserId,
         }),
       });
@@ -154,6 +178,20 @@ export default function PropertyDetailPage({
 
       setBookingSuccess(true);
       setBookingResult(json.booking);
+
+      // Immediately set property status to 'not available' in local state
+      setProperty((prev) => (prev ? { ...prev, status: "not available" as any } : null));
+
+      // Update localStorage so other pages/views reflect 'not available'
+      try {
+        const allProps = getStoredProperties();
+        const updated = allProps.map((p) =>
+          p.id === id ? { ...p, status: "not available" as any } : p
+        );
+        saveStoredProperties(updated);
+      } catch (e) {
+        console.warn("Failed to update localStorage:", e);
+      }
     } catch (err: any) {
       setBookingError(err.message || "An error occurred while booking. Please try again.");
     } finally {
@@ -258,9 +296,16 @@ export default function PropertyDetailPage({
                 <span className="px-2.5 py-1 bg-[#001637] text-white rounded-md text-xs font-semibold tracking-wide uppercase">
                   {transaction === "rent" ? "For Rent" : "For Sale"}
                 </span>
-                <span className="px-2.5 py-1 bg-[#a1f1e9] text-[#076a64] rounded-md text-xs font-semibold tracking-wide uppercase">
-                  {property.status || "available"}
-                </span>
+                {property.status === "not available" ? (
+                  <span className="px-2.5 py-1 bg-rose-100 text-rose-700 rounded-md text-xs font-bold tracking-wide uppercase flex items-center gap-1 border border-rose-200">
+                    <span className="material-symbols-outlined text-[13px]">block</span>
+                    Not Available (Booked)
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-1 bg-[#a1f1e9] text-[#076a64] rounded-md text-xs font-semibold tracking-wide uppercase">
+                    {property.status || "available"}
+                  </span>
+                )}
                 {property.verified && (
                   <span className="px-2.5 py-1 bg-[#076a64]/10 text-[#076a64] rounded-md text-xs font-semibold flex items-center gap-1 border border-[#076a64]/20">
                     <span className="material-symbols-outlined text-[14px]">verified</span>
@@ -565,7 +610,7 @@ export default function PropertyDetailPage({
                   <div className="p-3 bg-[#e6f7f6] rounded-lg text-left text-[11px] text-[#076a64] flex items-start gap-2 mb-4 border border-[#a1f1e9]">
                     <span className="material-symbols-outlined text-[16px] shrink-0 mt-0.5">verified</span>
                     <span>
-                      Verification email sent to <strong>{userEmail}</strong> and the property owner ({landlordName}). Check your inbox for agreement documents!
+                      Verification emails sent to <strong>{userEmail}</strong> and the property owner ({landlordName}). Property status is now <strong>Not Available</strong>. Check your inbox to confirm with <strong>YES / NO</strong>!
                     </span>
                   </div>
 
@@ -575,6 +620,28 @@ export default function PropertyDetailPage({
                   >
                     Modify / Make Another Booking
                   </button>
+                </div>
+              ) : property.status === "not available" ? (
+                <div className="text-center py-6">
+                  <div className="w-14 h-14 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4 border border-rose-200">
+                    <span className="material-symbols-outlined text-[32px]">event_busy</span>
+                  </div>
+                  <span className="px-3 py-1 bg-rose-100 text-rose-700 rounded-full text-xs font-bold tracking-wide uppercase inline-block mb-2">
+                    Listing Reserved
+                  </span>
+                  <h3 className="text-lg font-bold text-[#001637] font-plus-jakarta mb-1.5">
+                    Property Not Available
+                  </h3>
+                  <p className="text-xs text-[#44474e] mb-5 leading-relaxed">
+                    This property has been booked and is currently marked as not available. New bookings and viewing requests are closed for this listing.
+                  </p>
+                  <Link
+                    href="/properties"
+                    className="w-full py-2.5 bg-[#001637] hover:bg-[#172b4d] text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">search</span>
+                    Browse Available Properties
+                  </Link>
                 </div>
               ) : (
                 <>
@@ -813,6 +880,42 @@ export default function PropertyDetailPage({
                       />
                     </div>
 
+                    {/* User Decision Confirmation: Yes or No */}
+                    <div className="p-3 bg-[#e6f7f6] rounded-lg border border-[#a1f1e9] text-xs">
+                      <label className="font-semibold text-[#001637] block mb-1.5">
+                        Do you confirm this booking agreement?
+                      </label>
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-1.5 cursor-pointer font-bold text-[#076a64]">
+                          <input
+                            type="radio"
+                            name="userConfirmChoice"
+                            value="yes"
+                            checked={userAnswer === "yes"}
+                            onChange={() => setUserAnswer("yes")}
+                            className="text-[#076a64] focus:ring-[#076a64]"
+                          />
+                          <span>YES — I agree &amp; confirm</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 cursor-pointer font-bold text-[#ba1a1a]">
+                          <input
+                            type="radio"
+                            name="userConfirmChoice"
+                            value="no"
+                            checked={userAnswer === "no"}
+                            onChange={() => setUserAnswer("no")}
+                            className="text-[#ba1a1a] focus:ring-[#ba1a1a]"
+                          />
+                          <span>NO — Cancel</span>
+                        </label>
+                      </div>
+                      {userAnswer === "no" && (
+                        <p className="text-[11px] text-[#ba1a1a] mt-1.5 font-medium">
+                          You selected NO. The property will not be booked and remains available.
+                        </p>
+                      )}
+                    </div>
+
                     {/* Terms & Agreement Checkbox */}
                     <div className="flex items-start gap-2 pt-1">
                       <input
@@ -833,13 +936,18 @@ export default function PropertyDetailPage({
 
                     <button
                       type="submit"
-                      disabled={isSubmittingBooking || !agreedToTerms}
+                      disabled={isSubmittingBooking || !agreedToTerms || userAnswer === "no"}
                       className="w-full h-11 bg-[#076a64] hover:bg-[#00201e] disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm mt-1"
                     >
                       {isSubmittingBooking ? (
                         <>
                           <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
                           <span>Confirming Booking &amp; Sending Emails...</span>
+                        </>
+                      ) : userAnswer === "no" ? (
+                        <>
+                          <span className="material-symbols-outlined text-[18px]">block</span>
+                          <span>Booking Declined (Select YES to proceed)</span>
                         </>
                       ) : (
                         <>
