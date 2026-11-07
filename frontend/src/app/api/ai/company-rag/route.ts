@@ -242,7 +242,54 @@ export async function POST(req: Request) {
       });
     }
 
-    // 3. PROPERTY_SEARCH Intent
+    // 3. GREETING Intent: Immediate friendly greeting response without RAG or DB calls
+    if (classification.intent === "GREETING") {
+      return NextResponse.json({
+        success: true,
+        intent: "GREETING",
+        question,
+        grounded: true,
+        answer:
+          classification.conversationalResponse ||
+          "Hello! Welcome to HavenKey. How can I help you today? You can ask me about our services or search for properties.",
+        properties: [],
+        sources: [],
+        retrievedCount: 0,
+      });
+    }
+
+    // 4. GENERAL_CONVERSATION Intent: Polite responses to conversational queries
+    if (classification.intent === "GENERAL_CONVERSATION") {
+      return NextResponse.json({
+        success: true,
+        intent: "GENERAL_CONVERSATION",
+        question,
+        grounded: true,
+        answer:
+          classification.conversationalResponse ||
+          "I'm here to help! Feel free to ask about HavenKey's services, rental policies, or search for properties across Pakistan.",
+        properties: [],
+        sources: [],
+        retrievedCount: 0,
+      });
+    }
+
+    // 5. UNKNOWN Intent: Clarification request without RAG or hallucination
+    if (classification.intent === "UNKNOWN") {
+      return NextResponse.json({
+        success: true,
+        intent: "UNKNOWN",
+        question,
+        grounded: false,
+        answer:
+          "I'm not sure I understand your request. Could you please clarify? You can ask me about HavenKey's company policies, tenant/landlord procedures, or search for properties by location, type, and budget.",
+        properties: [],
+        sources: [],
+        retrievedCount: 0,
+      });
+    }
+
+    // 6. PROPERTY_SEARCH Intent
     if (classification.intent === "PROPERTY_SEARCH") {
       // Rule 1: If location is missing, ask clarification question instead of guessing
       if (classification.requiresClarification) {
@@ -277,7 +324,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // 4. BOTH Intent (Company Policy + Property Search)
+    // 7. BOTH Intent (Company Policy + Property Search)
     if (classification.intent === "BOTH") {
       // Execute RAG and Property Search independently (Rule 5)
       const companyPart = classification.companyQuery || question;
@@ -321,16 +368,17 @@ export async function POST(req: Request) {
       });
     }
 
-    // 5. COMPANY_INFO or UNKNOWN Intent (Existing RAG Pipeline)
-    const queryEmbedding = await EmbeddingService.generateEmbedding(question);
+    // 8. COMPANY_INFO Intent (Existing RAG Pipeline)
+    const companyQuery = classification.companyQuery || question;
+    const queryEmbedding = await EmbeddingService.generateEmbedding(companyQuery);
     const matchedChunks = await searchSimilarChunks(queryEmbedding, threshold, matchCount);
 
     let llmResult;
     try {
-      llmResult = await LocalLLMService.generateAnswer(question, matchedChunks);
+      llmResult = await LocalLLMService.generateAnswer(companyQuery, matchedChunks);
     } catch (llmErr: any) {
       console.warn("[company-rag] Local LLM fallback triggered:", llmErr.message);
-      llmResult = await generateGroundedAnswer(question, matchedChunks);
+      llmResult = await generateGroundedAnswer(companyQuery, matchedChunks);
     }
 
     const { answer, grounded, sources } = llmResult;

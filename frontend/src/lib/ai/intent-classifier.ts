@@ -1,10 +1,17 @@
 import { PropertySearchParams } from "./property-search";
 
-export type AIIntent = "COMPANY_INFO" | "PROPERTY_SEARCH" | "BOTH" | "UNKNOWN";
+export type AIIntent =
+  | "GREETING"
+  | "GENERAL_CONVERSATION"
+  | "COMPANY_INFO"
+  | "PROPERTY_SEARCH"
+  | "BOTH"
+  | "UNKNOWN";
 
 export interface IntentClassificationResult {
   intent: AIIntent;
   confidence: number;
+  conversationalResponse?: string;
   companyQuery?: string;
   propertyQuery?: string;
   propertyParams?: PropertySearchParams;
@@ -12,6 +19,59 @@ export interface IntentClassificationResult {
   clarificationMessage?: string;
   isSecurityViolation?: boolean;
   rejectionMessage?: string;
+}
+
+/**
+ * Generates immediate conversational responses for greetings and polite interactions
+ */
+export function getConversationalReply(query: string, intent: AIIntent): string {
+  const qLower = query.toLowerCase().trim();
+
+  if (intent === "GREETING") {
+    if (/\b(?:salam|assalam|aoa)\b/i.test(qLower)) {
+      return "Walaikum Assalam! Welcome to HavenKey. How can I help you today? You can ask me about our services or search for properties.";
+    }
+    return "Hello! Welcome to HavenKey. How can I help you today? You can ask me about our services or search for properties.";
+  }
+
+  if (intent === "GENERAL_CONVERSATION") {
+    // "how are you" / "hello, how are you?"
+    if (
+      /\b(?:how\s+(?:are|r)\s+(?:you|u)|how(?:'s|\s+is)\s+it\s+going|how\s+are\s+things|how\s+have\s+you\s+been)\b/i.test(
+        qLower
+      )
+    ) {
+      return "I'm doing well, thank you! How can I assist you with HavenKey properties or services today?";
+    }
+
+    // "thank you" / "thanks"
+    if (/\b(?:thank\s+you|thanks|thankyou|thx|ty|many\s+thanks|thanks\s+a\s+lot|thank\s+you\s+so\s+much)\b/i.test(qLower)) {
+      return "You're very welcome! If you have any questions about properties or HavenKey services, feel free to ask.";
+    }
+
+    // "what can you do?" / "who are you?" / "help"
+    if (
+      /\b(?:what\s+can\s+you\s+do|who\s+are\s+you|what\s+are\s+you|how\s+can\s+you\s+help|what\s+do\s+you\s+do|what\s+is\s+your\s+purpose|help\s+me)\b/i.test(
+        qLower
+      )
+    ) {
+      return "I can help you search for verified properties (houses, apartments, plots, commercial) across Pakistan, filter by location and budget, and answer questions about HavenKey company policies, tenancy escrow, and agreements.";
+    }
+
+    // "goodbye" / "bye"
+    if (/\b(?:goodbye|bye\s+bye|bye|see\s+you|take\s+care|have\s+a\s+nice\s+day|have\s+a\s+good\s+day)\b/i.test(qLower)) {
+      return "Goodbye! Have a great day, and feel free to return whenever you need assistance with HavenKey.";
+    }
+
+    // generic conversational acknowledgement (ok, great, cool)
+    if (/^(?:ok|okay|cool|great|awesome|understood|got\s+it|nice|perfect|sure|yes|no)[!.\s]*$/i.test(qLower)) {
+      return "Great! Let me know if there's anything else I can help you with regarding HavenKey listings or policies.";
+    }
+
+    return "I'm here to help! Feel free to ask about HavenKey's services, rental policies, or search for properties across Pakistan.";
+  }
+
+  return "";
 }
 
 /**
@@ -141,19 +201,22 @@ export function classifyAndExtract(query: string): IntentClassificationResult {
 
   // 2. Indicators for Company Policies / Procedures (RAG domain)
   const companyIndicators =
-    /(?:policy|procedure|rules|responsibilities|duty|duties|terms|complaint|escrow|refund|dispute|agreement|contract|register|registration|how (?:does|can|do) havenkey|services (?:does|provide)|about havenkey)/i;
+    /(?:policy|policies|procedure|procedures|rules?|responsibilit(?:y|ies)|dut(?:y|ies)|terms?|complaints?|escrow|refunds?|disputes?|agreements?|contracts?|regulat(?:ion|ions)|register|registration|conduct|disclaimer|management|tenants?|landlords?|guarantee|deeds?|deposits?|fees?|commissions?|verification|inspection|how (?:does|can|do) havenkey|(?:what|about|your|havenkey's?)\s+services|services (?:does|provide|offered|available)|tell me about (?:havenkey|your services|the company)|\babout havenkey\b|\bhavenkey\b)/i;
 
   // 3. Indicators for Real Estate Property Search (Supabase DB domain)
   const propertySearchIndicators =
-    /(?:show|find|search|browse|available|looking for|need|house|houses|villa|villas|apartment|apartments|flat|flats|plot|plots|commercial|rent|rental|for rent|sale|for sale|buy|purchase|marla|kanal|bed|bedroom|in sialkot|in lahore|in islamabad|in karachi|under \d+|price)/i;
+    /\b(?:show|find|search|browse|available|looking\s+for|need|houses?|villas?|apartments?|flats?|plots?|commercial|rentals?|rents?|for\s+rent|sales?|for\s+sale|buys?|purchases?|marla|kanal|beds?|bedrooms?|in\s+sialkot|in\s+lahore|in\s+islamabad|in\s+karachi|under\s+\d+|prices?)\b/i;
 
   const hasCompany = companyIndicators.test(qLower);
   const hasProperty = propertySearchIndicators.test(qLower);
 
-  // 4. Handle Compound Intent (BOTH)
+  // 4. Handle Compound Intent (BOTH: Company Policy + Property Search)
   if (hasCompany && hasProperty) {
     // Split into company query and property query using coordinating conjunctions
-    const parts = qClean.split(/\s+(?:and|as well as|also)\s+/i);
+    const parts = qClean
+      .split(/\s*(?:and|as well as|also|\n|;)\s+/i)
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
     let companyQuery = qClean;
     let propertyQuery = qClean;
 
@@ -168,6 +231,13 @@ export function classifyAndExtract(query: string): IntentClassificationResult {
     }
 
     const { params, requiresClarification, clarificationMessage } = extractPropertyParameters(propertyQuery);
+
+    if (!/\bhavenkey\b/i.test(companyQuery)) {
+      companyQuery = companyQuery.replace(/\byour\b/i, "HavenKey's");
+      if (!/\bhavenkey\b/i.test(companyQuery)) {
+        companyQuery = `${companyQuery} HavenKey`;
+      }
+    }
 
     return {
       intent: "BOTH",
@@ -196,14 +266,64 @@ export function classifyAndExtract(query: string): IntentClassificationResult {
 
   // 6. Handle Single Intent: COMPANY_INFO
   if (hasCompany && !hasProperty) {
+    let companyQuery = qClean;
+    if (!/\bhavenkey\b/i.test(companyQuery)) {
+      companyQuery = companyQuery.replace(/\byour\b/i, "HavenKey's");
+      if (!/\bhavenkey\b/i.test(companyQuery)) {
+        companyQuery = `${companyQuery} HavenKey`;
+      }
+    }
+
     return {
       intent: "COMPANY_INFO",
       confidence: 0.95,
-      companyQuery: qClean,
+      companyQuery,
     };
   }
 
-  // 7. General / Unrelated Fallback (UNKNOWN)
+  // 7. Conversational Intent: GENERAL_CONVERSATION (questions like "how are you", "what can you do", "thank you")
+  const howAreYouRegex =
+    /\b(?:how\s+(?:are|r)\s+(?:you|u)|how(?:'s|\s+is)\s+it\s+going|how\s+are\s+things|how\s+do\s+you\s+do|how\s+have\s+you\s+been)\b/i;
+
+  const thanksRegex =
+    /\b(?:thank\s+you|thanks|thankyou|thx|ty|many\s+thanks|thanks\s+a\s+lot|thank\s+you\s+so\s+much)\b/i;
+
+  const botCapabilityRegex =
+    /\b(?:what\s+can\s+you\s+do|who\s+are\s+you|what\s+are\s+you|how\s+can\s+you\s+help|what\s+do\s+you\s+do|what\s+is\s+your\s+purpose|help\s+me)\b/i;
+
+  const farewellRegex =
+    /\b(?:goodbye|bye\s+bye|bye|see\s+you|take\s+care|have\s+a\s+nice\s+day|have\s+a\s+good\s+day)\b/i;
+
+  const generalPraiseRegex =
+    /^(?:ok|okay|cool|great|awesome|understood|got\s+it|nice|perfect|sure|yes|no)[!.\s]*$/i;
+
+  if (
+    howAreYouRegex.test(qLower) ||
+    thanksRegex.test(qLower) ||
+    botCapabilityRegex.test(qLower) ||
+    farewellRegex.test(qLower) ||
+    generalPraiseRegex.test(qLower)
+  ) {
+    return {
+      intent: "GENERAL_CONVERSATION",
+      confidence: 0.95,
+      conversationalResponse: getConversationalReply(qClean, "GENERAL_CONVERSATION"),
+    };
+  }
+
+  // 8. Conversational Intent: GREETING (pure greetings like "hi", "hello", "good morning", "salam")
+  const greetingRegex =
+    /^(?:hi|hello|hey|heya|hiya|hi\s+there|hello\s+there|hey\s+there|good\s+(?:morning|afternoon|evening|day)|salam|assalam\s*(?:o|u)?\s*alaikum|asalam\s*o\s*alaikum|aoa)[!.\s]*$/i;
+
+  if (greetingRegex.test(qLower)) {
+    return {
+      intent: "GREETING",
+      confidence: 0.98,
+      conversationalResponse: getConversationalReply(qClean, "GREETING"),
+    };
+  }
+
+  // 9. General / Unrelated Fallback (UNKNOWN)
   return {
     intent: "UNKNOWN",
     confidence: 0.5,
