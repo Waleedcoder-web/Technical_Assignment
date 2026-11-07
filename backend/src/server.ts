@@ -628,22 +628,49 @@ app.get("/api/complaints", (req: Request, res: Response) => {
   res.json({ success: true, count: filtered.length, data: filtered });
 });
 
-app.post("/api/complaints", (req: Request, res: Response) => {
-  const { title, description, category, propertyId, userId } = req.body;
+app.post("/api/complaints", async (req: Request, res: Response) => {
+  const { title, description, category, propertyId, property_id, userId, user_id, agreementId, agreement_id, status } = req.body;
   if (!title || !description) {
     return res.status(400).json({ success: false, message: "Title and description are required" });
   }
 
+  const pId = property_id || propertyId || "lumina-sky-karachi";
+  const uId = user_id || userId || "usr-01";
+  const aId = agreement_id || agreementId || null;
+  const stat = status || "pending";
+
   const newComplaint: Complaint = {
     id: `CMP-${Date.now().toString().slice(-4)}`,
-    userId: userId || "usr-01",
-    propertyId: propertyId || "lumina-sky-karachi",
+    user_id: uId,
+    userId: uId,
+    property_id: pId,
+    propertyId: pId,
+    agreement_id: aId,
+    agreementId: aId,
     title,
     description,
     category: category || "general",
-    status: "pending",
+    status: stat,
+    created_at: new Date().toISOString(),
     createdAt: new Date().toISOString(),
   };
+
+  // Attempt Supabase insert if table is active
+  try {
+    const { data, error } = await supabase.from("complaints").insert([{
+      user_id: uId,
+      property_id: pId,
+      agreement_id: aId,
+      title,
+      description,
+      status: stat,
+    }]).select();
+    if (!error && data && data.length > 0) {
+      newComplaint.id = data[0].id;
+    }
+  } catch (err: any) {
+    console.warn("Supabase complaints insert warning:", err.message);
+  }
 
   complaints.unshift(newComplaint);
   res.status(201).json({ success: true, message: "Complaint submitted and assigned to facility team", data: newComplaint });
@@ -744,30 +771,85 @@ app.get("/api/agreement/:id", (req: Request, res: Response) => {
   res.json({ success: true, data: agreement });
 });
 
-app.post("/api/agreement", (req: Request, res: Response) => {
-  const { tenantId, landlordId, propertyId, monthlyRent, depositEscrow, startDate, endDate } = req.body;
-  if (!tenantId || !landlordId || !propertyId || !monthlyRent) {
-    return res.status(400).json({ success: false, message: "tenantId, landlordId, propertyId, and monthlyRent are required" });
+app.post("/api/agreement", async (req: Request, res: Response) => {
+  const {
+    tenantId,
+    tenant_id,
+    landlordId,
+    owner_id,
+    propertyId,
+    property_id,
+    monthlyRent,
+    monthly_rent,
+    depositEscrow,
+    security_deposit,
+    startDate,
+    start_date,
+    endDate,
+    end_date,
+    agreement_doc,
+    status,
+  } = req.body;
+
+  const tId = tenant_id || tenantId;
+  const oId = owner_id || landlordId;
+  const pId = property_id || propertyId;
+  const rentVal = monthly_rent !== undefined ? Number(monthly_rent) : (monthlyRent !== undefined ? Number(monthlyRent) : null);
+
+  if (!pId || !rentVal) {
+    return res.status(400).json({ success: false, message: "property_id and monthly_rent are required" });
   }
 
-  const rentVal = Number(monthlyRent);
-  const depositVal = Number(depositEscrow || rentVal * 2);
+  const depositVal = Number(security_deposit ?? depositEscrow ?? rentVal * 2);
+  const sDate = start_date || startDate || new Date().toISOString().split("T")[0];
+  const eDate = end_date || endDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const stat = status || "active";
 
   const newAgreement: Agreement = {
     id: `AGR-PK-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
-    tenantId,
-    landlordId,
-    propertyId,
+    property_id: pId,
+    propertyId: pId,
+    owner_id: oId,
+    landlordId: oId,
+    tenant_id: tId,
+    tenantId: tId,
+    start_date: sDate,
+    startDate: sDate,
+    end_date: eDate,
+    endDate: eDate,
+    monthly_rent: rentVal,
     monthlyRent: rentVal,
     monthlyRentFormatted: `PKR ${rentVal.toLocaleString()}`,
+    security_deposit: depositVal,
     depositEscrow: depositVal,
     depositEscrowFormatted: `PKR ${depositVal.toLocaleString()}`,
-    status: "active",
-    startDate: startDate || new Date().toISOString().split("T")[0],
-    endDate: endDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+    agreement_doc: agreement_doc || null,
+    status: stat,
     nextDueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
     eSigned: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   };
+
+  // Attempt Supabase insert if table is active
+  try {
+    const { data, error } = await supabase.from("agreements").insert([{
+      property_id: pId,
+      owner_id: oId || null,
+      tenant_id: tId || null,
+      start_date: sDate,
+      end_date: eDate,
+      monthly_rent: rentVal,
+      security_deposit: depositVal,
+      agreement_doc: agreement_doc || null,
+      status: stat,
+    }]).select();
+    if (!error && data && data.length > 0) {
+      newAgreement.id = data[0].id;
+    }
+  } catch (err: any) {
+    console.warn("Supabase agreements insert warning:", err.message);
+  }
 
   agreements.unshift(newAgreement);
   res.status(201).json({ success: true, message: "Digital Tenancy Agreement generated with biometric stamp", data: newAgreement });

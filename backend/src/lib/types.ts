@@ -61,13 +61,21 @@ export interface Property {
 
 export interface Complaint {
   id: string;
-  userId: string;
-  propertyId: string;
+  user_id?: string;
+  property_id?: string;
+  agreement_id?: string;
   title: string;
   description: string;
-  category: "hvac" | "plumbing" | "electrical" | "billing" | "general";
-  status: "pending" | "in_progress" | "resolved";
-  createdAt: string;
+  status: "pending" | "in_progress" | "resolved" | "rejected" | string;
+  created_at?: string;
+  updated_at?: string;
+
+  // Compatibility aliases
+  userId?: string;
+  propertyId?: string;
+  agreementId?: string;
+  category?: "hvac" | "plumbing" | "electrical" | "billing" | "general" | string;
+  createdAt?: string;
 }
 
 export interface ChatMessage {
@@ -81,16 +89,28 @@ export interface ChatMessage {
 
 export interface Agreement {
   id: string;
-  tenantId: string;
-  landlordId: string;
-  propertyId: string;
-  monthlyRent: number;
-  monthlyRentFormatted: string;
-  depositEscrow: number;
-  depositEscrowFormatted: string;
-  status: "active" | "pending" | "expired" | "terminated";
-  startDate: string;
-  endDate: string;
-  eSigned: boolean;
+  property_id?: string;
+  owner_id?: string;
+  tenant_id?: string;
+  start_date?: string;
+  end_date?: string;
+  monthly_rent?: number;
+  security_deposit?: number;
+  agreement_doc?: string;
+  status: "active" | "pending" | "expired" | "terminated" | string;
+  created_at?: string;
+  updated_at?: string;
+
+  // Compatibility aliases
+  propertyId?: string;
+  landlordId?: string;
+  tenantId?: string;
+  monthlyRent?: number;
+  monthlyRentFormatted?: string;
+  depositEscrow?: number;
+  depositEscrowFormatted?: string;
+  startDate?: string;
+  endDate?: string;
+  eSigned?: boolean;
   nextDueDate?: string;
 }
