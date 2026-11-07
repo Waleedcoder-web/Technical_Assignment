@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import EmbeddingService from "@/lib/rag/embedding";
 import { searchSimilarChunks, MatchedChunk } from "@/lib/rag/vector-store";
 import LocalLLMService from "@/lib/rag/llm";
+import { classifyAndExtract } from "@/lib/ai/intent-classifier";
+import { searchProperties } from "@/lib/ai/property-search";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -224,13 +226,105 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1. Generate 384-dimensional query embedding locally
-    const queryEmbedding = await EmbeddingService.generateEmbedding(question);
+    // 1. Classify Intent & Extract Structured Parameters
+    const classification = classifyAndExtract(question);
 
-    // 2. Call match_rag_chunks RPC in Supabase
+    // 2. Security Rejection Guardrail: Disallow unauthorized credentials/database dumps
+    if (classification.isSecurityViolation) {
+      return NextResponse.json({
+        success: true,
+        intent: "UNKNOWN",
+        question,
+        grounded: false,
+        answer: classification.rejectionMessage,
+        properties: [],
+        sources: [],
+      });
+    }
+
+    // 3. PROPERTY_SEARCH Intent
+    if (classification.intent === "PROPERTY_SEARCH") {
+      // Rule 1: If location is missing, ask clarification question instead of guessing
+      if (classification.requiresClarification) {
+        return NextResponse.json({
+          success: true,
+          intent: "PROPERTY_SEARCH",
+          question,
+          grounded: true,
+          answer: classification.clarificationMessage,
+          properties: [],
+          sources: [],
+        });
+      }
+
+      // Query Supabase properties table
+      const searchResult = await searchProperties(classification.propertyParams || {});
+      const hasProps = searchResult.properties && searchResult.properties.length > 0;
+
+      const answer = hasProps
+        ? `Here are the matching verified properties in ${classification.propertyParams?.location || "our catalog"}:`
+        : "I couldn't find any properties matching your search criteria. You can try changing your location, budget, or property requirements.";
+
+      return NextResponse.json({
+        success: true,
+        intent: "PROPERTY_SEARCH",
+        question,
+        grounded: true,
+        answer,
+        properties: searchResult.properties || [],
+        sources: [],
+        retrievedCount: searchResult.count,
+      });
+    }
+
+    // 4. BOTH Intent (Company Policy + Property Search)
+    if (classification.intent === "BOTH") {
+      // Execute RAG and Property Search independently (Rule 5)
+      const companyPart = classification.companyQuery || question;
+      const queryEmbedding = await EmbeddingService.generateEmbedding(companyPart);
+      const matchedChunks = await searchSimilarChunks(queryEmbedding, threshold, matchCount);
+
+      let ragResult;
+      try {
+        ragResult = await LocalLLMService.generateAnswer(companyPart, matchedChunks);
+      } catch (llmErr: any) {
+        console.warn("[company-rag] Local LLM fallback triggered:", llmErr.message);
+        ragResult = await generateGroundedAnswer(companyPart, matchedChunks);
+      }
+
+      let properties: any[] = [];
+      let propertyLead = "";
+
+      if (classification.requiresClarification) {
+        propertyLead = `\n\nFor property search: ${classification.clarificationMessage}`;
+      } else {
+        const searchResult = await searchProperties(classification.propertyParams || {});
+        properties = searchResult.properties || [];
+        if (properties.length > 0) {
+          propertyLead = `\n\nHere are the available properties in ${classification.propertyParams?.location || "our catalog"}:`;
+        } else {
+          propertyLead = `\n\nI couldn't find any properties matching your search criteria. You can try changing your location, budget, or property requirements.`;
+        }
+      }
+
+      const combinedAnswer = (ragResult.answer + propertyLead).trim();
+
+      return NextResponse.json({
+        success: true,
+        intent: "BOTH",
+        question,
+        grounded: ragResult.grounded,
+        answer: combinedAnswer,
+        sources: ragResult.sources,
+        properties,
+        retrievedCount: matchedChunks.length,
+      });
+    }
+
+    // 5. COMPANY_INFO or UNKNOWN Intent (Existing RAG Pipeline)
+    const queryEmbedding = await EmbeddingService.generateEmbedding(question);
     const matchedChunks = await searchSimilarChunks(queryEmbedding, threshold, matchCount);
 
-    // 3. Pass retrieved context to local Qwen LLM service
     let llmResult;
     try {
       llmResult = await LocalLLMService.generateAnswer(question, matchedChunks);
@@ -243,10 +337,12 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
+      intent: classification.intent,
       question,
       grounded,
       answer,
       sources,
+      properties: [],
       retrievedCount: matchedChunks.length,
       chunks: matchedChunks.map((c) => ({
         id: c.id,

@@ -163,65 +163,28 @@ export default function AiAssistantPage() {
     setIsTyping(true);
 
     try {
-      // Differentiate between Property Search (DB queries) vs Company Information (RAG)
-      const isPropertyQuery = /\b(find|search|house|villa|apartment|flat|plot|room|marla|kanal|bed|bedroom|bath|rent|buy|sale|pkr|price|budget|lahore|islamabad|karachi|sialkot|rawalpindi)\b/i.test(query);
+      // Send all queries to unified AI Assistant router (supports COMPANY_INFO, PROPERTY_SEARCH, BOTH)
+      const res = await fetch("/api/ai/company-rag", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: query }),
+      });
 
-      if (isPropertyQuery) {
-        // Query properties database endpoint
-        let propertyList: any[] = [];
-        try {
-          const res = await fetch("http://localhost:5000/api/properties");
-          if (res.ok) {
-            const json = await res.json();
-            propertyList = json.data || json || [];
-          }
-        } catch {
-          propertyList = mockProperties;
-        }
-
-        const qLower = query.toLowerCase();
-        const filtered = propertyList.filter((p: any) => {
-          return (
-            (p.title && p.title.toLowerCase().includes(qLower)) ||
-            (p.location && p.location.toLowerCase().includes(qLower)) ||
-            (p.city && p.city.toLowerCase().includes(qLower)) ||
-            (p.property_type && qLower.includes(p.property_type.toLowerCase()))
-          );
-        });
-
-        const matchedProps = filtered.length > 0 ? filtered.slice(0, 4) : propertyList.slice(0, 2);
-
-        const aiReply: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          sender: "ai",
-          text: `Here are the matching verified property listings based on your search for "${query}":`,
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          properties: matchedProps,
-        };
-        setMessages((prev) => [...prev, aiReply]);
-      } else {
-        // Company Information Assistant (RAG Pipeline)
-        const res = await fetch("/api/ai/company-rag", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ question: query }),
-        });
-
-        const json = await res.json();
-        if (!res.ok || !json.success) {
-          throw new Error(json.message || "Failed to retrieve company documentation.");
-        }
-
-        const aiReply: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          sender: "ai",
-          text: json.answer,
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          sources: json.sources,
-          isRAG: true,
-        };
-        setMessages((prev) => [...prev, aiReply]);
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || "Failed to process request.");
       }
+
+      const aiReply: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        sender: "ai",
+        text: json.answer,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        properties: json.properties && json.properties.length > 0 ? json.properties : undefined,
+        sources: json.sources && json.sources.length > 0 ? json.sources : undefined,
+        isRAG: Boolean(json.sources && json.sources.length > 0),
+      };
+      setMessages((prev) => [...prev, aiReply]);
     } catch (err: any) {
       const errorReply: ChatMessage = {
         id: (Date.now() + 1).toString(),
