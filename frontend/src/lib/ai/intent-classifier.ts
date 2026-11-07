@@ -160,6 +160,28 @@ function parsePrice(text: string): { minPrice: number | null; maxPrice: number |
     }
   }
 
+  // Standalone price or budget: "50 lakh", "50 lac", "1 crore", "budget 50 lakh"
+  if (maxPrice === null && minPrice === null) {
+    const standaloneMatch = text.match(
+      /(?:budget\s*(?:is|of)?\s*)?(?:pkr|rs\.?)?\s*([\d\.]+)\s*(lakh|lac|crore|k|million)\b/i
+    );
+    if (standaloneMatch) {
+      const val = parseFloat(standaloneMatch[1]);
+      const unit = (standaloneMatch[2] || "").toLowerCase();
+      if (!isNaN(val)) {
+        if (unit.startsWith("la")) {
+          maxPrice = val * 100000;
+        } else if (unit === "crore") {
+          maxPrice = val * 10000000;
+        } else if (unit === "million") {
+          maxPrice = val * 1000000;
+        } else if (unit === "k") {
+          maxPrice = val * 1000;
+        }
+      }
+    }
+  }
+
   return { minPrice, maxPrice };
 }
 
@@ -180,9 +202,149 @@ function parseArea(text: string): { areaValue: number | null; areaUnit: string |
 }
 
 /**
- * Classifies user intent and extracts validated property search parameters.
+ * Extracts raw, unvalidated property parameters from any query or follow-up snippet.
  */
-export function classifyAndExtract(query: string): IntentClassificationResult {
+export function extractRawParameters(query: string): {
+  detectedLocation: string | null;
+  detectedPropertyType: string | null;
+  detectedListingType: string | null;
+  minPrice: number | null;
+  maxPrice: number | null;
+  areaValue: number | null;
+  areaUnit: string | null;
+  bedrooms: number | null;
+  hasAnyAttribute: boolean;
+} {
+  const qClean = query.trim();
+  const qLower = qClean.toLowerCase();
+
+  // Location extraction
+  let detectedLocation: string | null = null;
+  for (const loc of KNOWN_LOCATIONS) {
+    const regex = new RegExp(`\\b${loc}\\b`, "i");
+    if (regex.test(qLower)) {
+      detectedLocation = loc.charAt(0).toUpperCase() + loc.slice(1);
+      break;
+    }
+  }
+
+  // Prepositional location pattern: "in <City>", "near <City>", "at <City>"
+  if (!detectedLocation) {
+    const prepMatch = qClean.match(/\b(?:in|at|near|around)\s+([A-Za-z]{3,25})\b/i);
+    if (prepMatch && !/^(the|a|an|pkr|rs|rent|sale|marla|kanal|bed|budget|price)$/i.test(prepMatch[1])) {
+      detectedLocation = prepMatch[1].charAt(0).toUpperCase() + prepMatch[1].slice(1).toLowerCase();
+    }
+  }
+
+  // Standalone word fallback for location (e.g. user simply replies "Sialkot", "Lahore", "Islamabad")
+  if (!detectedLocation && /^[a-zA-Z]{3,20}[.!?]?$/.test(qClean)) {
+    const word = qClean.replace(/[.!?]/g, "").trim();
+    if (!/^(yes|no|hi|hello|hey|help|bye|thanks|sure|ok|okay|what|when|why|where|how)$/i.test(word)) {
+      detectedLocation = word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    }
+  }
+
+  // Property Type extraction (preserves distinct categories)
+  let detectedPropertyType: string | null = null;
+  if (/\b(house|houses|villa|villas)\b/i.test(qLower)) {
+    detectedPropertyType = "villas";
+  } else if (/\b(apartment|apartments|flat|flats)\b/i.test(qLower)) {
+    detectedPropertyType = "apartments";
+  } else if (/\b(plot|plots|land)\b/i.test(qLower)) {
+    detectedPropertyType = "plots";
+  } else if (/\b(commercial|office|shop)\b/i.test(qLower)) {
+    detectedPropertyType = "commercial";
+  }
+
+  // Listing Type extraction (rent vs sale)
+  let detectedListingType: string | null = null;
+  if (/\b(rent|rental|for rent|to rent)\b/i.test(qLower)) {
+    detectedListingType = "rent";
+  } else if (/\b(sale|for sale|buy|purchase)\b/i.test(qLower)) {
+    detectedListingType = "sale";
+  }
+
+  // Price extraction
+  const { minPrice, maxPrice } = parsePrice(qLower);
+
+  // Area extraction
+  const { areaValue, areaUnit } = parseArea(qLower);
+
+  // Bedroom extraction
+  let bedrooms: number | null = null;
+  const bedMatch = qLower.match(/(\d+)\s*(?:bed|bedroom|beds|bhk)/i);
+  if (bedMatch) {
+    const b = parseInt(bedMatch[1], 10);
+    if (!isNaN(b)) bedrooms = b;
+  }
+
+  const hasAnyAttribute = Boolean(
+    detectedLocation ||
+    detectedPropertyType ||
+    detectedListingType ||
+    minPrice !== null ||
+    maxPrice !== null ||
+    areaValue !== null ||
+    bedrooms !== null
+  );
+
+  return {
+    detectedLocation,
+    detectedPropertyType,
+    detectedListingType,
+    minPrice,
+    maxPrice,
+    areaValue,
+    areaUnit,
+    bedrooms,
+    hasAnyAttribute,
+  };
+}
+
+/**
+ * Extracts validated parameters from a property search query string.
+ * Strictly adheres to rule 1: Never assumes Sialkot or any default location when unspecified.
+ */
+export function extractPropertyParameters(query: string): {
+  params: PropertySearchParams;
+  requiresClarification: boolean;
+  clarificationMessage?: string;
+} {
+  const raw = extractRawParameters(query);
+
+  const params: PropertySearchParams = {
+    property_type: raw.detectedPropertyType,
+    listing_type: raw.detectedListingType,
+    location: raw.detectedLocation,
+    area_value: raw.areaValue,
+    area_unit: raw.areaUnit,
+    min_price: raw.minPrice,
+    max_price: raw.maxPrice,
+    bedrooms: raw.bedrooms,
+  };
+
+  if (!raw.detectedLocation) {
+    return {
+      params,
+      requiresClarification: true,
+      clarificationMessage: "Which city or location are you looking for?",
+    };
+  }
+
+  return {
+    params,
+    requiresClarification: false,
+  };
+}
+
+/**
+ * Classifies user intent and extracts validated property search parameters.
+ * Supports multi-turn conversation context by merging pendingSearchParams when present.
+ */
+export function classifyAndExtract(
+  query: string,
+  pendingContext?: PropertySearchParams | null
+): IntentClassificationResult {
   const qClean = query.trim();
   const qLower = qClean.toLowerCase();
 
@@ -199,20 +361,30 @@ export function classifyAndExtract(query: string): IntentClassificationResult {
     };
   }
 
-  // 2. Indicators for Company Policies / Procedures (RAG domain)
+  // 2. Cancellation Check: Explicit request to cancel/clear ongoing property search
+  if (/^(?:cancel|cancel search|stop|never mind|nevermind|forget it|clear search)[!.\s]*$/i.test(qLower)) {
+    return {
+      intent: "GENERAL_CONVERSATION",
+      confidence: 1.0,
+      conversationalResponse:
+        "Property search cancelled. How else can I help you today? You can ask about our company policies or start a new search.",
+    };
+  }
+
+  // 3. Indicators for Company Policies / Procedures (RAG domain)
   const companyIndicators =
     /(?:policy|policies|procedure|procedures|rules?|responsibilit(?:y|ies)|dut(?:y|ies)|terms?|complaints?|escrow|refunds?|disputes?|agreements?|contracts?|regulat(?:ion|ions)|register|registration|conduct|disclaimer|management|tenants?|landlords?|guarantee|deeds?|deposits?|fees?|commissions?|verification|inspection|how (?:does|can|do) havenkey|(?:what|about|your|havenkey's?)\s+services|services (?:does|provide|offered|available)|tell me about (?:havenkey|your services|the company)|\babout havenkey\b|\bhavenkey\b)/i;
 
-  // 3. Indicators for Real Estate Property Search (Supabase DB domain)
+  // 4. Indicators for Real Estate Property Search (Supabase DB domain)
   const propertySearchIndicators =
     /\b(?:show|find|search|browse|available|looking\s+for|need|houses?|villas?|apartments?|flats?|plots?|commercial|rentals?|rents?|for\s+rent|sales?|for\s+sale|buys?|purchases?|marla|kanal|beds?|bedrooms?|in\s+sialkot|in\s+lahore|in\s+islamabad|in\s+karachi|under\s+\d+|prices?)\b/i;
 
+  const rawExtracted = extractRawParameters(qClean);
   const hasCompany = companyIndicators.test(qLower);
-  const hasProperty = propertySearchIndicators.test(qLower);
+  const hasPropertyKeywords = propertySearchIndicators.test(qLower);
 
-  // 4. Handle Compound Intent (BOTH: Company Policy + Property Search)
-  if (hasCompany && hasProperty) {
-    // Split into company query and property query using coordinating conjunctions
+  // 5. Handle Compound Intent (BOTH: Company Policy + Property Search)
+  if (hasCompany && (hasPropertyKeywords || (rawExtracted.hasAnyAttribute && !pendingContext))) {
     const parts = qClean
       .split(/\s*(?:and|as well as|also|\n|;)\s+/i)
       .map((p) => p.trim())
@@ -250,22 +422,10 @@ export function classifyAndExtract(query: string): IntentClassificationResult {
     };
   }
 
-  // 5. Handle Single Intent: PROPERTY_SEARCH
-  if (hasProperty && !hasCompany) {
-    const { params, requiresClarification, clarificationMessage } = extractPropertyParameters(qClean);
-
-    return {
-      intent: "PROPERTY_SEARCH",
-      confidence: 0.95,
-      propertyQuery: qClean,
-      propertyParams: params,
-      requiresClarification,
-      clarificationMessage,
-    };
-  }
-
-  // 6. Handle Single Intent: COMPANY_INFO
-  if (hasCompany && !hasProperty) {
+  // 6. Handle Explicit Single Intent: COMPANY_INFO
+  // If the user explicitly asks an unrelated company question (e.g. tenant duties),
+  // switch context to COMPANY_INFO instead of forcing previous property search!
+  if (hasCompany && !hasPropertyKeywords) {
     let companyQuery = qClean;
     if (!/\bhavenkey\b/i.test(companyQuery)) {
       companyQuery = companyQuery.replace(/\byour\b/i, "HavenKey's");
@@ -281,7 +441,50 @@ export function classifyAndExtract(query: string): IntentClassificationResult {
     };
   }
 
-  // 7. Conversational Intent: GENERAL_CONVERSATION (questions like "how are you", "what can you do", "thank you")
+  // 7. Multi-Turn Context Follow-Up:
+  // If pendingContext exists and user supplies follow-up attributes (city, budget, area, etc.)
+  if (pendingContext && rawExtracted.hasAnyAttribute) {
+    const mergedParams: PropertySearchParams = {
+      property_type: rawExtracted.detectedPropertyType ?? pendingContext.property_type ?? null,
+      listing_type: rawExtracted.detectedListingType ?? pendingContext.listing_type ?? null,
+      location: rawExtracted.detectedLocation ?? pendingContext.location ?? null,
+      area_value: rawExtracted.areaValue ?? pendingContext.area_value ?? null,
+      area_unit: rawExtracted.areaUnit ?? pendingContext.area_unit ?? null,
+      min_price: rawExtracted.minPrice ?? pendingContext.min_price ?? null,
+      max_price: rawExtracted.maxPrice ?? pendingContext.max_price ?? null,
+      bedrooms: rawExtracted.bedrooms ?? pendingContext.bedrooms ?? null,
+    };
+
+    const requiresClarification = !mergedParams.location;
+    const clarificationMessage = requiresClarification
+      ? "Which city or location are you looking for?"
+      : undefined;
+
+    return {
+      intent: "PROPERTY_SEARCH",
+      confidence: 0.95,
+      propertyQuery: qClean,
+      propertyParams: mergedParams,
+      requiresClarification,
+      clarificationMessage,
+    };
+  }
+
+  // 8. Handle Standalone PROPERTY_SEARCH (New search request)
+  if (hasPropertyKeywords || rawExtracted.hasAnyAttribute) {
+    const { params, requiresClarification, clarificationMessage } = extractPropertyParameters(qClean);
+
+    return {
+      intent: "PROPERTY_SEARCH",
+      confidence: 0.95,
+      propertyQuery: qClean,
+      propertyParams: params,
+      requiresClarification,
+      clarificationMessage,
+    };
+  }
+
+  // 9. Conversational Intent: GENERAL_CONVERSATION
   const howAreYouRegex =
     /\b(?:how\s+(?:are|r)\s+(?:you|u)|how(?:'s|\s+is)\s+it\s+going|how\s+are\s+things|how\s+do\s+you\s+do|how\s+have\s+you\s+been)\b/i;
 
@@ -311,7 +514,7 @@ export function classifyAndExtract(query: string): IntentClassificationResult {
     };
   }
 
-  // 8. Conversational Intent: GREETING (pure greetings like "hi", "hello", "good morning", "salam")
+  // 10. Conversational Intent: GREETING
   const greetingRegex =
     /^(?:hi|hello|hey|heya|hiya|hi\s+there|hello\s+there|hey\s+there|good\s+(?:morning|afternoon|evening|day)|salam|assalam\s*(?:o|u)?\s*alaikum|asalam\s*o\s*alaikum|aoa)[!.\s]*$/i;
 
@@ -323,105 +526,9 @@ export function classifyAndExtract(query: string): IntentClassificationResult {
     };
   }
 
-  // 9. General / Unrelated Fallback (UNKNOWN)
+  // 11. General / Unrelated Fallback (UNKNOWN)
   return {
     intent: "UNKNOWN",
     confidence: 0.5,
-  };
-}
-
-/**
- * Extracts validated parameters from a property search query string.
- * Strictly adheres to rule 1: Never assumes Sialkot or any default location when unspecified.
- */
-export function extractPropertyParameters(query: string): {
-  params: PropertySearchParams;
-  requiresClarification: boolean;
-  clarificationMessage?: string;
-} {
-  const qLower = query.toLowerCase();
-
-  // Location extraction
-  let detectedLocation: string | null = null;
-  for (const loc of KNOWN_LOCATIONS) {
-    const regex = new RegExp(`\\b${loc}\\b`, "i");
-    if (regex.test(qLower)) {
-      detectedLocation = loc.charAt(0).toUpperCase() + loc.slice(1);
-      break;
-    }
-  }
-
-  // Prepositional location pattern: "in <City>", "near <City>", "at <City>"
-  if (!detectedLocation) {
-    const prepMatch = query.match(/\b(?:in|at|near|around)\s+([A-Za-z]{3,25})\b/i);
-    if (prepMatch && !/^(the|a|an|pkr|rs|rent|sale|marla|kanal|bed|budget|price)$/i.test(prepMatch[1])) {
-      detectedLocation = prepMatch[1].charAt(0).toUpperCase() + prepMatch[1].slice(1).toLowerCase();
-    }
-  }
-
-  // Property Type extraction (preserves distinct categories)
-  let detectedPropertyType: string | null = null;
-  if (/\b(house|houses|villa|villas)\b/i.test(qLower)) {
-    detectedPropertyType = "villas"; // maps to houses & villas category
-  } else if (/\b(apartment|apartments|flat|flats)\b/i.test(qLower)) {
-    detectedPropertyType = "apartments";
-  } else if (/\b(plot|plots|land)\b/i.test(qLower)) {
-    detectedPropertyType = "plots";
-  } else if (/\b(commercial|office|shop)\b/i.test(qLower)) {
-    detectedPropertyType = "commercial";
-  }
-
-  // Listing Type extraction (rent vs sale)
-  let detectedListingType: string | null = null;
-  if (/\b(rent|rental|for rent|to rent)\b/i.test(qLower)) {
-    detectedListingType = "rent";
-  } else if (/\b(sale|for sale|buy|purchase)\b/i.test(qLower)) {
-    detectedListingType = "sale";
-  }
-
-  // Price extraction
-  const { minPrice, maxPrice } = parsePrice(qLower);
-
-  // Area extraction
-  const { areaValue, areaUnit } = parseArea(qLower);
-
-  // Bedroom extraction (e.g. "3 bed", "3 bedroom", "4 beds")
-  let bedrooms: number | null = null;
-  const bedMatch = qLower.match(/(\d+)\s*(?:bed|bedroom|beds|bhk)/i);
-  if (bedMatch) {
-    const b = parseInt(bedMatch[1], 10);
-    if (!isNaN(b)) bedrooms = b;
-  }
-
-  // Rule 1 Enforcement: If location is missing from search query, ask clarification question
-  if (!detectedLocation) {
-    return {
-      params: {
-        property_type: detectedPropertyType,
-        listing_type: detectedListingType,
-        location: null,
-        area_value: areaValue,
-        area_unit: areaUnit,
-        min_price: minPrice,
-        max_price: maxPrice,
-        bedrooms,
-      },
-      requiresClarification: true,
-      clarificationMessage: "Which city or location are you looking for?",
-    };
-  }
-
-  return {
-    params: {
-      property_type: detectedPropertyType,
-      listing_type: detectedListingType,
-      location: detectedLocation,
-      area_value: areaValue,
-      area_unit: areaUnit,
-      min_price: minPrice,
-      max_price: maxPrice,
-      bedrooms,
-    },
-    requiresClarification: false,
   };
 }

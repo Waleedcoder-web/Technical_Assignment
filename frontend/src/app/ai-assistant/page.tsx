@@ -6,6 +6,7 @@ import Navbar from "@/components/layout/navbar";
 import Footer from "@/components/layout/footer";
 import PropertyCard from "@/components/ui/property-card";
 import { mockProperties } from "@/lib/mock-data";
+import { PropertySearchParams } from "@/lib/ai/property-search";
 
 interface ChatMessage {
   id: string;
@@ -145,6 +146,10 @@ export default function AiAssistantPage() {
 
   const [inputMessage, setInputMessage] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [pendingSearchParams, setPendingSearchParams] = useState<PropertySearchParams | null>(null);
+  const [sessionId, setSessionId] = useState<string>(
+    () => `session_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
+  );
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -163,16 +168,28 @@ export default function AiAssistantPage() {
     setIsTyping(true);
 
     try {
-      // Send all queries to unified AI Assistant router (supports COMPANY_INFO, PROPERTY_SEARCH, BOTH)
+      // Send query along with session state, pending search parameters, and message context
       const res = await fetch("/api/ai/company-rag", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: query }),
+        body: JSON.stringify({
+          question: query,
+          sessionId,
+          pendingSearchParams,
+          history: messages.slice(-6).map((m) => ({ sender: m.sender, text: m.text })),
+        }),
       });
 
       const json = await res.json();
       if (!res.ok || !json.success) {
         throw new Error(json.message || "Failed to process request.");
+      }
+
+      // Maintain or clear pending search parameters based on backend response
+      if (json.pendingSearchParams !== undefined) {
+        setPendingSearchParams(json.pendingSearchParams);
+      } else {
+        setPendingSearchParams(null);
       }
 
       const aiReply: ChatMessage = {
@@ -236,7 +253,9 @@ export default function AiAssistantPage() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() =>
+                onClick={() => {
+                  setPendingSearchParams(null);
+                  setSessionId(`session_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`);
                   setMessages([
                     {
                       id: "init",
@@ -244,8 +263,8 @@ export default function AiAssistantPage() {
                       text: "Conversation cleared. How can I assist your property search or legal lease verification today?",
                       timestamp: "Just now",
                     },
-                  ])
-                }
+                  ]);
+                }}
                 className="px-3 py-1.5 bg-white text-[#44474e] hover:text-[#001637] border border-[#e7e8ea] text-xs font-semibold rounded-lg transition-colors flex items-center gap-1 shadow-xs"
               >
                 <span className="material-symbols-outlined text-[16px]">refresh</span>

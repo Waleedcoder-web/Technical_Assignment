@@ -3,7 +3,8 @@ import EmbeddingService from "@/lib/rag/embedding";
 import { searchSimilarChunks, MatchedChunk } from "@/lib/rag/vector-store";
 import LocalLLMService from "@/lib/rag/llm";
 import { classifyAndExtract } from "@/lib/ai/intent-classifier";
-import { searchProperties } from "@/lib/ai/property-search";
+import { searchProperties, PropertySearchParams } from "@/lib/ai/property-search";
+import { getSession, saveSession, clearSession } from "@/lib/ai/session-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -226,11 +227,21 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1. Classify Intent & Extract Structured Parameters
-    const classification = classifyAndExtract(question);
+    const sessionId: string = (body.sessionId || "default-session").trim();
+
+    // Determine pending search parameters from explicit body or session store
+    const session = getSession(sessionId);
+    const incomingPending: PropertySearchParams | null =
+      body.pendingSearchParams !== undefined
+        ? body.pendingSearchParams
+        : session?.pendingSearchParams || null;
+
+    // 1. Classify Intent & Extract Structured Parameters (with context merging)
+    const classification = classifyAndExtract(question, incomingPending);
 
     // 2. Security Rejection Guardrail: Disallow unauthorized credentials/database dumps
     if (classification.isSecurityViolation) {
+      clearSession(sessionId);
       return NextResponse.json({
         success: true,
         intent: "UNKNOWN",
@@ -239,6 +250,7 @@ export async function POST(req: Request) {
         answer: classification.rejectionMessage,
         properties: [],
         sources: [],
+        pendingSearchParams: null,
       });
     }
 
@@ -255,11 +267,16 @@ export async function POST(req: Request) {
         properties: [],
         sources: [],
         retrievedCount: 0,
+        pendingSearchParams: incomingPending,
       });
     }
 
     // 4. GENERAL_CONVERSATION Intent: Polite responses to conversational queries
     if (classification.intent === "GENERAL_CONVERSATION") {
+      const isCancellation = /^(?:cancel|cancel search|stop|never mind|nevermind|clear search)/i.test(question);
+      if (isCancellation) {
+        clearSession(sessionId);
+      }
       return NextResponse.json({
         success: true,
         intent: "GENERAL_CONVERSATION",
@@ -271,6 +288,7 @@ export async function POST(req: Request) {
         properties: [],
         sources: [],
         retrievedCount: 0,
+        pendingSearchParams: isCancellation ? null : incomingPending,
       });
     }
 
@@ -286,13 +304,15 @@ export async function POST(req: Request) {
         properties: [],
         sources: [],
         retrievedCount: 0,
+        pendingSearchParams: incomingPending,
       });
     }
 
     // 6. PROPERTY_SEARCH Intent
     if (classification.intent === "PROPERTY_SEARCH") {
-      // Rule 1: If location is missing, ask clarification question instead of guessing
+      // Rule 1: If location is missing, ask clarification question and preserve parameters
       if (classification.requiresClarification) {
+        saveSession(sessionId, classification.propertyParams || null, true);
         return NextResponse.json({
           success: true,
           intent: "PROPERTY_SEARCH",
@@ -301,6 +321,8 @@ export async function POST(req: Request) {
           answer: classification.clarificationMessage,
           properties: [],
           sources: [],
+          pendingSearchParams: classification.propertyParams || null,
+          requiresClarification: true,
         });
       }
 
@@ -312,6 +334,9 @@ export async function POST(req: Request) {
         ? `Here are the matching verified properties in ${classification.propertyParams?.location || "our catalog"}:`
         : "I couldn't find any properties matching your search criteria. You can try changing your location, budget, or property requirements.";
 
+      // Retain the current search parameters in session to allow refinements (e.g. "Under 50 lakh")
+      saveSession(sessionId, classification.propertyParams || null, false);
+
       return NextResponse.json({
         success: true,
         intent: "PROPERTY_SEARCH",
@@ -321,6 +346,8 @@ export async function POST(req: Request) {
         properties: searchResult.properties || [],
         sources: [],
         retrievedCount: searchResult.count,
+        pendingSearchParams: classification.propertyParams || null,
+        requiresClarification: false,
       });
     }
 
@@ -343,10 +370,12 @@ export async function POST(req: Request) {
       let propertyLead = "";
 
       if (classification.requiresClarification) {
+        saveSession(sessionId, classification.propertyParams || null, true);
         propertyLead = `\n\nFor property search: ${classification.clarificationMessage}`;
       } else {
         const searchResult = await searchProperties(classification.propertyParams || {});
         properties = searchResult.properties || [];
+        saveSession(sessionId, classification.propertyParams || null, false);
         if (properties.length > 0) {
           propertyLead = `\n\nHere are the available properties in ${classification.propertyParams?.location || "our catalog"}:`;
         } else {
@@ -365,10 +394,15 @@ export async function POST(req: Request) {
         sources: ragResult.sources,
         properties,
         retrievedCount: matchedChunks.length,
+        pendingSearchParams: classification.propertyParams || null,
+        requiresClarification: classification.requiresClarification || false,
       });
     }
 
     // 8. COMPANY_INFO Intent (Existing RAG Pipeline)
+    // When the user explicitly asks an unrelated company question, clear pending property search state
+    clearSession(sessionId);
+
     const companyQuery = classification.companyQuery || question;
     const queryEmbedding = await EmbeddingService.generateEmbedding(companyQuery);
     const matchedChunks = await searchSimilarChunks(queryEmbedding, threshold, matchCount);
@@ -392,6 +426,7 @@ export async function POST(req: Request) {
       sources,
       properties: [],
       retrievedCount: matchedChunks.length,
+      pendingSearchParams: null,
       chunks: matchedChunks.map((c) => ({
         id: c.id,
         filename: c.filename,
