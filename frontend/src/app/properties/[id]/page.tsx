@@ -15,12 +15,127 @@ export default function PropertyDetailPage({
   const [property, setProperty] = useState<Property | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Booking Form State
+  const [bookingDate, setBookingDate] = useState(() => {
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    return tomorrow.toISOString().split("T")[0];
+  });
+  const [timeSlot, setTimeSlot] = useState("11:00 AM - 12:00 PM");
+  const [bookingType, setBookingType] = useState("in_person");
+  const [userName, setUserName] = useState("");
+  const [userEmail, setUserEmail] = useState("");
+  const [userPhone, setUserPhone] = useState("");
+  const [notes, setNotes] = useState("");
+  const [agreedToTerms, setAgreedToTerms] = useState(true);
+  const [bookingTypesList, setBookingTypesList] = useState<
+    { slug: string; type_name: string; description?: string; icon?: string }[]
+  >([
+    { slug: "in_person", type_name: "In-Person Private Viewing" },
+    { slug: "video_tour", type_name: "Live Video Tour" },
+    { slug: "inspection", type_name: "Technical Property Inspection" },
+  ]);
+  const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
+  const [bookingSuccess, setBookingSuccess] = useState(false);
+  const [bookingResult, setBookingResult] = useState<any>(null);
+  const [bookingError, setBookingError] = useState<string | null>(null);
+
   useEffect(() => {
     const list = getStoredProperties();
     const found = list.find((p) => p.id === id) || null;
     setProperty(found);
     setIsLoading(false);
+
+    // Auto-prefill authenticated user details from localStorage
+    if (typeof window !== "undefined") {
+      try {
+        const storedUser = localStorage.getItem("havenkey_user");
+        if (storedUser) {
+          const parsed = JSON.parse(storedUser);
+          if (parsed.fullname || parsed.name) setUserName(parsed.fullname || parsed.name);
+          if (parsed.email) setUserEmail(parsed.email);
+          if (parsed.phone_no || parsed.phone) setUserPhone(parsed.phone_no || parsed.phone);
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    // Dynamically load active booking types from Supabase API
+    fetch("/api/bookings/types")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.types) && data.types.length > 0) {
+          setBookingTypesList(data.types);
+        }
+      })
+      .catch((err) => console.warn("Failed to load booking types dynamically:", err));
   }, [id]);
+
+  const handleBookingSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBookingError(null);
+
+    if (!userName.trim()) {
+      setBookingError("Please enter your full name.");
+      return;
+    }
+    if (!userEmail.trim() || !userEmail.includes("@")) {
+      setBookingError("Please provide a valid email address for verification.");
+      return;
+    }
+    if (!userPhone.trim()) {
+      setBookingError("Please enter your phone / WhatsApp contact number.");
+      return;
+    }
+    if (!agreedToTerms) {
+      setBookingError("Please accept the terms and viewing policy.");
+      return;
+    }
+
+    setIsSubmittingBooking(true);
+
+    try {
+      let currentUserId: string | null = null;
+      if (typeof window !== "undefined") {
+        try {
+          const stored = localStorage.getItem("havenkey_user");
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (parsed?.id) currentUserId = parsed.id;
+          }
+        } catch {}
+      }
+
+      const res = await fetch("/api/properties/book", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          propertyId: id,
+          userName,
+          userEmail,
+          userPhone,
+          bookingDate,
+          timeSlot,
+          bookingType,
+          notes,
+          agreedToTerms,
+          userId: currentUserId,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || "Failed to confirm booking.");
+      }
+
+      setBookingSuccess(true);
+      setBookingResult(json.booking);
+    } catch (err: any) {
+      setBookingError(err.message || "An error occurred while booking. Please try again.");
+    } finally {
+      setIsSubmittingBooking(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -344,75 +459,222 @@ export default function PropertyDetailPage({
 
             {/* Right Sticky Sidebar: Viewing Scheduler */}
             <div className="lg:col-span-4 sticky top-28 bg-white p-6 rounded-xl border border-[#e7e8ea] shadow-md">
-              <h3 className="text-lg font-bold text-[#001637] font-plus-jakarta mb-1">
-                Schedule a Private Viewing
-              </h3>
-              <p className="text-xs text-[#44474e] mb-5">
-                Book an in-person or live video tour directly with verified HavenKey concierges.
-              </p>
+              {bookingSuccess ? (
+                <div className="text-center py-4">
+                  <div className="w-14 h-14 bg-[#e6f7f6] text-[#076a64] rounded-full flex items-center justify-center mx-auto mb-3 border border-[#a1f1e9]">
+                    <span className="material-symbols-outlined text-[32px]">mark_email_read</span>
+                  </div>
+                  <h3 className="text-lg font-bold text-[#001637] font-plus-jakarta mb-1">
+                    Viewing Booked Successfully!
+                  </h3>
+                  <p className="text-xs text-[#44474e] mb-4">
+                    Your appointment has been registered and dual verification emails have been dispatched.
+                  </p>
 
-              <form className="flex flex-col gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-[#44474e] block mb-1">
-                    Select Viewing Date
-                  </label>
-                  <input
-                    type="date"
-                    defaultValue="2026-11-08"
-                    className="w-full h-10 px-3 bg-[#f2f4f6] text-xs text-[#191c1e] rounded-lg border border-[#e7e8ea] focus:outline-none focus:border-[#076a64]"
-                  />
+                  <div className="bg-[#f2f4f6] rounded-lg p-3 text-left text-xs space-y-1.5 mb-4 border border-[#e7e8ea]">
+                    <div className="flex justify-between">
+                      <span className="text-[#75777f]">Reference:</span>
+                      <span className="font-mono font-semibold text-[#001637]">
+                        #{bookingResult?.id ? bookingResult.id.slice(0, 8) : "CONFIRMED"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#75777f]">Date:</span>
+                      <span className="font-semibold text-[#076a64]">{bookingDate}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#75777f]">Time Slot:</span>
+                      <span className="font-semibold text-[#076a64]">{timeSlot}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#75777f]">Type:</span>
+                      <span className="text-[#191c1e] capitalize">{bookingType.replace("_", " ")}</span>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-[#e6f7f6] rounded-lg text-left text-[11px] text-[#076a64] flex items-start gap-2 mb-4 border border-[#a1f1e9]">
+                    <span className="material-symbols-outlined text-[16px] shrink-0 mt-0.5">verified</span>
+                    <span>
+                      Verification email sent to <strong>{userEmail}</strong> and the property owner. Check your inbox for tour details!
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => setBookingSuccess(false)}
+                    className="w-full py-2.5 bg-[#f2f4f6] hover:bg-[#edeef0] text-[#001637] text-xs font-semibold rounded-lg transition-colors"
+                  >
+                    Schedule Another Viewing
+                  </button>
                 </div>
+              ) : (
+                <>
+                  <h3 className="text-lg font-bold text-[#001637] font-plus-jakarta mb-1">
+                    Schedule a Private Viewing
+                  </h3>
+                  <p className="text-xs text-[#44474e] mb-4">
+                    Book an in-person or live video tour directly with verified HavenKey concierges.
+                  </p>
 
-                <div>
-                  <label className="text-xs font-semibold text-[#44474e] block mb-1">
-                    Preferred Time Slot
-                  </label>
-                  <select className="w-full h-10 px-3 bg-[#f2f4f6] text-xs text-[#191c1e] rounded-lg border border-[#e7e8ea] focus:outline-none focus:border-[#076a64]">
-                    <option>11:00 AM - 12:00 PM</option>
-                    <option>02:00 PM - 03:00 PM</option>
-                    <option>04:30 PM - 05:30 PM</option>
-                  </select>
-                </div>
+                  {bookingError && (
+                    <div className="p-3 mb-4 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-start gap-2">
+                      <span className="material-symbols-outlined text-[16px] shrink-0 mt-0.5">error</span>
+                      <span>{bookingError}</span>
+                    </div>
+                  )}
 
-                <div>
-                  <label className="text-xs font-semibold text-[#44474e] block mb-1">
-                    Your Name
-                  </label>
-                  <input
-                    type="text"
-                    defaultValue="Waleed Hassan"
-                    className="w-full h-10 px-3 bg-[#f2f4f6] text-xs text-[#191c1e] rounded-lg border border-[#e7e8ea] focus:outline-none focus:border-[#076a64]"
-                  />
-                </div>
+                  <form onSubmit={handleBookingSubmit} className="flex flex-col gap-3.5">
+                    {/* Booking / Tour Type Selection */}
+                    <div>
+                      <label className="text-xs font-semibold text-[#44474e] block mb-1">
+                        Viewing / Tour Type
+                      </label>
+                      <select
+                        value={bookingType}
+                        onChange={(e) => setBookingType(e.target.value)}
+                        className="w-full h-10 px-3 bg-[#f2f4f6] text-xs text-[#191c1e] rounded-lg border border-[#e7e8ea] focus:outline-none focus:border-[#076a64]"
+                      >
+                        {bookingTypesList.map((t) => (
+                          <option key={t.slug} value={t.slug}>
+                            {t.type_name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-                <div>
-                  <label className="text-xs font-semibold text-[#44474e] block mb-1">
-                    Phone / WhatsApp
-                  </label>
-                  <input
-                    type="tel"
-                    defaultValue="+92 300 0000000"
-                    className="w-full h-10 px-3 bg-[#f2f4f6] text-xs text-[#191c1e] rounded-lg border border-[#e7e8ea] focus:outline-none focus:border-[#076a64]"
-                  />
-                </div>
+                    {/* Date and Time Slot */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-xs font-semibold text-[#44474e] block mb-1">
+                          Date
+                        </label>
+                        <input
+                          type="date"
+                          value={bookingDate}
+                          onChange={(e) => setBookingDate(e.target.value)}
+                          required
+                          className="w-full h-10 px-2.5 bg-[#f2f4f6] text-xs text-[#191c1e] rounded-lg border border-[#e7e8ea] focus:outline-none focus:border-[#076a64]"
+                        />
+                      </div>
 
-                <button
-                  type="button"
-                  className="w-full h-11 bg-[#076a64] hover:bg-[#00201e] text-white text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm mt-2"
-                >
-                  <span className="material-symbols-outlined text-[18px]">calendar_month</span>
-                  Confirm Tour Booking
-                </button>
+                      <div>
+                        <label className="text-xs font-semibold text-[#44474e] block mb-1">
+                          Preferred Slot
+                        </label>
+                        <select
+                          value={timeSlot}
+                          onChange={(e) => setTimeSlot(e.target.value)}
+                          className="w-full h-10 px-2.5 bg-[#f2f4f6] text-xs text-[#191c1e] rounded-lg border border-[#e7e8ea] focus:outline-none focus:border-[#076a64]"
+                        >
+                          <option>11:00 AM - 12:00 PM</option>
+                          <option>02:00 PM - 03:00 PM</option>
+                          <option>04:30 PM - 05:30 PM</option>
+                          <option>06:00 PM - 07:00 PM</option>
+                        </select>
+                      </div>
+                    </div>
 
-                <div className="p-3 bg-[#f2f4f6] rounded-lg flex items-start gap-2 text-[11px] text-[#44474e]">
-                  <span className="material-symbols-outlined text-[16px] text-[#076a64] shrink-0 mt-0.5">
-                    verified
-                  </span>
-                  <span>
-                    Your tour booking is protected by HavenKey zero-brokerage &amp; escrow guarantee.
-                  </span>
-                </div>
-              </form>
+                    {/* User Name */}
+                    <div>
+                      <label className="text-xs font-semibold text-[#44474e] block mb-1">
+                        Your Full Name
+                      </label>
+                      <input
+                        type="text"
+                        value={userName}
+                        onChange={(e) => setUserName(e.target.value)}
+                        placeholder="e.g. Waleed Hassan"
+                        required
+                        className="w-full h-10 px-3 bg-[#f2f4f6] text-xs text-[#191c1e] rounded-lg border border-[#e7e8ea] focus:outline-none focus:border-[#076a64]"
+                      />
+                    </div>
+
+                    {/* User Email */}
+                    <div>
+                      <label className="text-xs font-semibold text-[#44474e] block mb-1">
+                        Email Address <span className="text-[#076a64] font-normal">(for verification)</span>
+                      </label>
+                      <input
+                        type="email"
+                        value={userEmail}
+                        onChange={(e) => setUserEmail(e.target.value)}
+                        placeholder="e.g. waleed@havenkey.pk"
+                        required
+                        className="w-full h-10 px-3 bg-[#f2f4f6] text-xs text-[#191c1e] rounded-lg border border-[#e7e8ea] focus:outline-none focus:border-[#076a64]"
+                      />
+                    </div>
+
+                    {/* Phone / WhatsApp */}
+                    <div>
+                      <label className="text-xs font-semibold text-[#44474e] block mb-1">
+                        Phone / WhatsApp
+                      </label>
+                      <input
+                        type="tel"
+                        value={userPhone}
+                        onChange={(e) => setUserPhone(e.target.value)}
+                        placeholder="+92 300 0000000"
+                        required
+                        className="w-full h-10 px-3 bg-[#f2f4f6] text-xs text-[#191c1e] rounded-lg border border-[#e7e8ea] focus:outline-none focus:border-[#076a64]"
+                      />
+                    </div>
+
+                    {/* Special Notes / Questions */}
+                    <div>
+                      <label className="text-xs font-semibold text-[#44474e] block mb-1">
+                        Special Instructions / Notes <span className="text-gray-400 font-normal">(optional)</span>
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        placeholder="Any questions or specific areas of the property you want to inspect?"
+                        className="w-full p-2.5 bg-[#f2f4f6] text-xs text-[#191c1e] rounded-lg border border-[#e7e8ea] focus:outline-none focus:border-[#076a64] resize-none"
+                      />
+                    </div>
+
+                    {/* Terms & Agreement Checkbox */}
+                    <div className="flex items-start gap-2 pt-1">
+                      <input
+                        id="agreedToTermsCheckbox"
+                        type="checkbox"
+                        checked={agreedToTerms}
+                        onChange={(e) => setAgreedToTerms(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded border-[#e7e8ea] text-[#076a64] focus:ring-[#076a64]"
+                      />
+                      <label htmlFor="agreedToTermsCheckbox" className="text-[11px] text-[#44474e] leading-snug cursor-pointer select-none">
+                        I agree to HavenKey's viewing and tenancy policies, verify that my details are accurate, and authorize HavenKey to notify the property owner.
+                      </label>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isSubmittingBooking || !agreedToTerms}
+                      className="w-full h-11 bg-[#076a64] hover:bg-[#00201e] disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm mt-1"
+                    >
+                      {isSubmittingBooking ? (
+                        <>
+                          <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
+                          <span>Confirming &amp; Dispatching Emails...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="material-symbols-outlined text-[18px]">calendar_month</span>
+                          <span>Confirm Tour Booking</span>
+                        </>
+                      )}
+                    </button>
+
+                    <div className="p-2.5 bg-[#f2f4f6] rounded-lg flex items-start gap-2 text-[11px] text-[#44474e]">
+                      <span className="material-symbols-outlined text-[16px] text-[#076a64] shrink-0 mt-0.5">
+                        verified
+                      </span>
+                      <span>
+                        Protected by HavenKey biometric verification and zero-brokerage guarantee.
+                      </span>
+                    </div>
+                  </form>
+                </>
+              )}
             </div>
           </div>
         </div>
