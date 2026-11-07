@@ -168,13 +168,27 @@ export default function AiAssistantPage() {
     setIsTyping(true);
 
     try {
-      // Send query along with session state, pending search parameters, and message context
+      let currentUserId: string | null = null;
+      if (typeof window !== "undefined") {
+        try {
+          const stored = localStorage.getItem("havenkey_user");
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (parsed?.id) currentUserId = parsed.id;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      // Send query along with session state, user id, pending search parameters, and message context
       const res = await fetch("/api/ai/company-rag", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: query,
           sessionId,
+          userId: currentUserId,
           pendingSearchParams,
           history: messages.slice(-6).map((m) => ({ sender: m.sender, text: m.text })),
         }),

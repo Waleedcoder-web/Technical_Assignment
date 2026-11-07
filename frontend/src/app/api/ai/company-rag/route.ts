@@ -5,6 +5,7 @@ import LocalLLMService from "@/lib/rag/llm";
 import { classifyAndExtract } from "@/lib/ai/intent-classifier";
 import { searchProperties, PropertySearchParams } from "@/lib/ai/property-search";
 import { getSession, saveSession, clearSession } from "@/lib/ai/session-store";
+import { logChatMessage } from "@/lib/ai/chat-logger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -212,9 +213,13 @@ export async function generateGroundedAnswer(
  * RAG retrieval endpoint for company policies, terms, and agreement queries
  */
 export async function POST(req: Request) {
+  let sessionId = "default-session";
+  let userId: string | null = null;
+  let question = "";
+
   try {
     const body = await req.json().catch(() => ({}));
-    const question: string = (body.question || body.query || "").trim();
+    question = (body.question || body.query || "").trim();
     const threshold: number =
       typeof body.threshold === "number" ? body.threshold : DEFAULT_SIMILARITY_THRESHOLD;
     const matchCount: number =
@@ -227,7 +232,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const sessionId: string = (body.sessionId || "default-session").trim();
+    sessionId = (body.sessionId || "default-session").trim();
+    userId = body.userId || null;
 
     // Determine pending search parameters from explicit body or session store
     const session = getSession(sessionId);
@@ -242,12 +248,22 @@ export async function POST(req: Request) {
     // 2. Security Rejection Guardrail: Disallow unauthorized credentials/database dumps
     if (classification.isSecurityViolation) {
       clearSession(sessionId);
+      const answer =
+        classification.rejectionMessage ||
+        "I cannot fulfill this request as it involves sensitive system information.";
+      await logChatMessage({
+        sessionId,
+        userId,
+        input: question,
+        output: answer,
+        status: "unauthorized",
+      });
       return NextResponse.json({
         success: true,
         intent: "UNKNOWN",
         question,
         grounded: false,
-        answer: classification.rejectionMessage,
+        answer,
         properties: [],
         sources: [],
         pendingSearchParams: null,
@@ -256,14 +272,22 @@ export async function POST(req: Request) {
 
     // 3. GREETING Intent: Immediate friendly greeting response without RAG or DB calls
     if (classification.intent === "GREETING") {
+      const answer =
+        classification.conversationalResponse ||
+        "Hello! Welcome to HavenKey. How can I help you today? You can ask me about our services or search for properties.";
+      await logChatMessage({
+        sessionId,
+        userId,
+        input: question,
+        output: answer,
+        status: "success",
+      });
       return NextResponse.json({
         success: true,
         intent: "GREETING",
         question,
         grounded: true,
-        answer:
-          classification.conversationalResponse ||
-          "Hello! Welcome to HavenKey. How can I help you today? You can ask me about our services or search for properties.",
+        answer,
         properties: [],
         sources: [],
         retrievedCount: 0,
@@ -277,14 +301,22 @@ export async function POST(req: Request) {
       if (isCancellation) {
         clearSession(sessionId);
       }
+      const answer =
+        classification.conversationalResponse ||
+        "I'm here to help! Feel free to ask about HavenKey's services, rental policies, or search for properties across Pakistan.";
+      await logChatMessage({
+        sessionId,
+        userId,
+        input: question,
+        output: answer,
+        status: "success",
+      });
       return NextResponse.json({
         success: true,
         intent: "GENERAL_CONVERSATION",
         question,
         grounded: true,
-        answer:
-          classification.conversationalResponse ||
-          "I'm here to help! Feel free to ask about HavenKey's services, rental policies, or search for properties across Pakistan.",
+        answer,
         properties: [],
         sources: [],
         retrievedCount: 0,
@@ -294,13 +326,21 @@ export async function POST(req: Request) {
 
     // 5. UNKNOWN Intent: Clarification request without RAG or hallucination
     if (classification.intent === "UNKNOWN") {
+      const answer =
+        "I'm not sure I understand your request. Could you please clarify? You can ask me about HavenKey's company policies, tenant/landlord procedures, or search for properties by location, type, and budget.";
+      await logChatMessage({
+        sessionId,
+        userId,
+        input: question,
+        output: answer,
+        status: "clarification_needed",
+      });
       return NextResponse.json({
         success: true,
         intent: "UNKNOWN",
         question,
         grounded: false,
-        answer:
-          "I'm not sure I understand your request. Could you please clarify? You can ask me about HavenKey's company policies, tenant/landlord procedures, or search for properties by location, type, and budget.",
+        answer,
         properties: [],
         sources: [],
         retrievedCount: 0,
@@ -313,12 +353,22 @@ export async function POST(req: Request) {
       // Rule 1: If location is missing, ask clarification question and preserve parameters
       if (classification.requiresClarification) {
         saveSession(sessionId, classification.propertyParams || null, true);
+        const answer =
+          classification.clarificationMessage ||
+          "Which city or location are you looking for? For example: Lahore, Karachi, or Sialkot.";
+        await logChatMessage({
+          sessionId,
+          userId,
+          input: question,
+          output: answer,
+          status: "clarification_needed",
+        });
         return NextResponse.json({
           success: true,
           intent: "PROPERTY_SEARCH",
           question,
           grounded: true,
-          answer: classification.clarificationMessage,
+          answer,
           properties: [],
           sources: [],
           pendingSearchParams: classification.propertyParams || null,
@@ -336,6 +386,14 @@ export async function POST(req: Request) {
 
       // Retain the current search parameters in session to allow refinements (e.g. "Under 50 lakh")
       saveSession(sessionId, classification.propertyParams || null, false);
+
+      await logChatMessage({
+        sessionId,
+        userId,
+        input: question,
+        output: answer,
+        status: "success",
+      });
 
       return NextResponse.json({
         success: true,
@@ -385,6 +443,14 @@ export async function POST(req: Request) {
 
       const combinedAnswer = (ragResult.answer + propertyLead).trim();
 
+      await logChatMessage({
+        sessionId,
+        userId,
+        input: question,
+        output: combinedAnswer,
+        status: classification.requiresClarification ? "clarification_needed" : "success",
+      });
+
       return NextResponse.json({
         success: true,
         intent: "BOTH",
@@ -417,6 +483,14 @@ export async function POST(req: Request) {
 
     const { answer, grounded, sources } = llmResult;
 
+    await logChatMessage({
+      sessionId,
+      userId,
+      input: question,
+      output: answer,
+      status: "success",
+    });
+
     return NextResponse.json({
       success: true,
       intent: classification.intent,
@@ -437,8 +511,18 @@ export async function POST(req: Request) {
       timing: (llmResult as any).timing,
     });
   } catch (err: any) {
+    const errorMsg = `RAG retrieval error: ${err.message}`;
+    if (question) {
+      await logChatMessage({
+        sessionId,
+        userId,
+        input: question,
+        output: errorMsg,
+        status: "error",
+      });
+    }
     return NextResponse.json(
-      { success: false, message: `RAG retrieval error: ${err.message}` },
+      { success: false, message: errorMsg },
       { status: 500 }
     );
   }
