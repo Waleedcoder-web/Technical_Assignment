@@ -16,10 +16,12 @@ export default function PropertyDetailPage({
   const [isLoading, setIsLoading] = useState(true);
 
   // Booking Form State
+  const [bookingMode, setBookingMode] = useState<"booking" | "viewing">("booking");
   const [bookingDate, setBookingDate] = useState(() => {
     const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
     return tomorrow.toISOString().split("T")[0];
   });
+  const [leaseDuration, setLeaseDuration] = useState("1 Year");
   const [timeSlot, setTimeSlot] = useState("11:00 AM - 12:00 PM");
   const [bookingType, setBookingType] = useState("in_person");
   const [userName, setUserName] = useState("");
@@ -88,7 +90,7 @@ export default function PropertyDetailPage({
       return;
     }
     if (!agreedToTerms) {
-      setBookingError("Please accept the terms and viewing policy.");
+      setBookingError("Please accept the terms and agreement policies to proceed.");
       return;
     }
 
@@ -106,17 +108,39 @@ export default function PropertyDetailPage({
         } catch {}
       }
 
+      const isRent = (property?.transactionType || property?.listing_type || "rent") === "rent";
+      const rentAmount = isRent ? Number(property?.price || 0) : undefined;
+      const depositVal = isRent ? Number(property?.price || 0) * 2 : Number(property?.price || 0) * 0.1;
+
+      // Calculate lease end date
+      let calculatedEndDate = bookingDate;
+      if (isRent) {
+        const d = new Date(bookingDate);
+        if (leaseDuration === "6 Months") d.setMonth(d.getMonth() + 6);
+        else if (leaseDuration === "2 Years") d.setFullYear(d.getFullYear() + 2);
+        else if (leaseDuration === "3 Years") d.setFullYear(d.getFullYear() + 3);
+        else d.setFullYear(d.getFullYear() + 1);
+        calculatedEndDate = d.toISOString().split("T")[0];
+      }
+
       const res = await fetch("/api/properties/book", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           propertyId: id,
+          listingType: property?.transactionType || property?.listing_type || "rent",
+          bookingMode,
+          bookingType: bookingMode === "booking" ? (isRent ? "rent_booking" : "sale_booking") : bookingType,
           userName,
           userEmail,
           userPhone,
-          bookingDate,
+          startDate: bookingDate,
+          endDate: calculatedEndDate,
+          duration: leaseDuration,
+          monthlyRent: rentAmount,
+          securityDeposit: depositVal,
+          tokenAmount: isRent ? undefined : depositVal,
           timeSlot,
-          bookingType,
           notes,
           agreedToTerms,
           userId: currentUserId,
@@ -457,45 +481,91 @@ export default function PropertyDetailPage({
               </div>
             </div>
 
-            {/* Right Sticky Sidebar: Viewing Scheduler */}
+            {/* Right Sticky Sidebar: Rent / Sale Online Booking & Viewing */}
             <div className="lg:col-span-4 sticky top-28 bg-white p-6 rounded-xl border border-[#e7e8ea] shadow-md">
               {bookingSuccess ? (
-                <div className="text-center py-4">
+                <div className="text-center py-3">
                   <div className="w-14 h-14 bg-[#e6f7f6] text-[#076a64] rounded-full flex items-center justify-center mx-auto mb-3 border border-[#a1f1e9]">
                     <span className="material-symbols-outlined text-[32px]">mark_email_read</span>
                   </div>
                   <h3 className="text-lg font-bold text-[#001637] font-plus-jakarta mb-1">
-                    Viewing Booked Successfully!
+                    {bookingMode === "booking"
+                      ? transaction === "rent"
+                        ? "Rental Booking Confirmed!"
+                        : "Purchase Reservation Confirmed!"
+                      : "Viewing Scheduled!"}
                   </h3>
                   <p className="text-xs text-[#44474e] mb-4">
-                    Your appointment has been registered and dual verification emails have been dispatched.
+                    Your online booking has been registered and dual verification emails have been dispatched.
                   </p>
 
                   <div className="bg-[#f2f4f6] rounded-lg p-3 text-left text-xs space-y-1.5 mb-4 border border-[#e7e8ea]">
                     <div className="flex justify-between">
-                      <span className="text-[#75777f]">Reference:</span>
+                      <span className="text-[#75777f]">Reference ID:</span>
                       <span className="font-mono font-semibold text-[#001637]">
                         #{bookingResult?.id ? bookingResult.id.slice(0, 8) : "CONFIRMED"}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-[#75777f]">Date:</span>
-                      <span className="font-semibold text-[#076a64]">{bookingDate}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-[#75777f]">Time Slot:</span>
-                      <span className="font-semibold text-[#076a64]">{timeSlot}</span>
+                      <span className="text-[#75777f]">Property:</span>
+                      <span className="font-semibold text-[#001637] truncate max-w-[180px]">{property.title}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-[#75777f]">Type:</span>
-                      <span className="text-[#191c1e] capitalize">{bookingType.replace("_", " ")}</span>
+                      <span className="font-semibold text-[#076a64] uppercase">{transaction}</span>
                     </div>
+                    {transaction === "rent" && bookingMode === "booking" ? (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-[#75777f]">Monthly Rent:</span>
+                          <span className="font-semibold text-[#076a64]">{priceDisplay} / mo</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-[#75777f]">Security Deposit:</span>
+                          <span className="font-semibold text-[#001637]">PKR {(Number(property.price || 0) * 2).toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-[#75777f]">Move-in Date:</span>
+                          <span className="font-semibold text-[#076a64]">{bookingDate}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-[#75777f]">Duration:</span>
+                          <span className="text-[#191c1e]">{leaseDuration}</span>
+                        </div>
+                      </>
+                    ) : transaction === "sale" && bookingMode === "booking" ? (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-[#75777f]">Agreed Price:</span>
+                          <span className="font-semibold text-[#076a64]">{priceDisplay}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-[#75777f]">Token Deposit:</span>
+                          <span className="font-semibold text-[#001637]">PKR {(Number(property.price || 0) * 0.1).toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-[#75777f]">Closing Date:</span>
+                          <span className="font-semibold text-[#076a64]">{bookingDate}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-[#75777f]">Viewing Date:</span>
+                          <span className="font-semibold text-[#076a64]">{bookingDate}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-[#75777f]">Time Slot:</span>
+                          <span className="font-semibold text-[#076a64]">{timeSlot}</span>
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   <div className="p-3 bg-[#e6f7f6] rounded-lg text-left text-[11px] text-[#076a64] flex items-start gap-2 mb-4 border border-[#a1f1e9]">
                     <span className="material-symbols-outlined text-[16px] shrink-0 mt-0.5">verified</span>
                     <span>
-                      Verification email sent to <strong>{userEmail}</strong> and the property owner. Check your inbox for tour details!
+                      Verification email sent to <strong>{userEmail}</strong> and the property owner ({landlordName}). Check your inbox for agreement documents!
                     </span>
                   </div>
 
@@ -503,17 +573,78 @@ export default function PropertyDetailPage({
                     onClick={() => setBookingSuccess(false)}
                     className="w-full py-2.5 bg-[#f2f4f6] hover:bg-[#edeef0] text-[#001637] text-xs font-semibold rounded-lg transition-colors"
                   >
-                    Schedule Another Viewing
+                    Modify / Make Another Booking
                   </button>
                 </div>
               ) : (
                 <>
+                  {/* Mode Selector Tabs (Online Booking vs Viewing) */}
+                  <div className="flex rounded-lg bg-[#f2f4f6] p-1 mb-4 border border-[#e7e8ea]">
+                    <button
+                      type="button"
+                      onClick={() => setBookingMode("booking")}
+                      className={`flex-1 py-1.5 text-xs font-semibold rounded-md flex items-center justify-center gap-1.5 transition-all ${
+                        bookingMode === "booking"
+                          ? "bg-white text-[#076a64] shadow-sm font-bold"
+                          : "text-[#75777f] hover:text-[#001637]"
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-[15px]">verified_user</span>
+                      <span>Online Booking</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBookingMode("viewing")}
+                      className={`flex-1 py-1.5 text-xs font-semibold rounded-md flex items-center justify-center gap-1.5 transition-all ${
+                        bookingMode === "viewing"
+                          ? "bg-white text-[#076a64] shadow-sm font-bold"
+                          : "text-[#75777f] hover:text-[#001637]"
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-[15px]">calendar_month</span>
+                      <span>Schedule Viewing</span>
+                    </button>
+                  </div>
+
                   <h3 className="text-lg font-bold text-[#001637] font-plus-jakarta mb-1">
-                    Schedule a Private Viewing
+                    {bookingMode === "booking"
+                      ? transaction === "rent"
+                        ? "Book for Rent (Digital Lease)"
+                        : "Book Property (Purchase Token)"
+                      : "Schedule a Private Viewing"}
                   </h3>
-                  <p className="text-xs text-[#44474e] mb-4">
-                    Book an in-person or live video tour directly with verified HavenKey concierges.
+                  <p className="text-xs text-[#44474e] mb-3">
+                    {bookingMode === "booking"
+                      ? transaction === "rent"
+                        ? "Instant online rental reservation with biometric escrow guarantee."
+                        : "Reserve property purchase with digital token escrow protection."
+                      : "Book an in-person or live video tour directly with verified concierges."}
                   </p>
+
+                  {/* Financial Breakdown Summary Box for Online Booking */}
+                  {bookingMode === "booking" && (
+                    <div className="p-3 bg-[#e6f7f6] rounded-lg border border-[#a1f1e9] mb-4 text-xs space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[#001637] font-semibold">
+                          {transaction === "rent" ? "Monthly Rent:" : "Agreed Purchase Price:"}
+                        </span>
+                        <span className="text-sm font-bold text-[#076a64]">
+                          {priceDisplay} {pricePeriod}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-[11px] text-[#44474e] pt-0.5">
+                        <span>
+                          {transaction === "rent" ? "Security Deposit (2 Months Escrow):" : "Token Reservation Deposit (10%):"}
+                        </span>
+                        <span className="font-semibold text-[#001637]">
+                          PKR{" "}
+                          {transaction === "rent"
+                            ? (Number(property.price || 0) * 2).toLocaleString()
+                            : (Number(property.price || 0) * 0.1).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
                   {bookingError && (
                     <div className="p-3 mb-4 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-start gap-2">
@@ -522,58 +653,104 @@ export default function PropertyDetailPage({
                     </div>
                   )}
 
-                  <form onSubmit={handleBookingSubmit} className="flex flex-col gap-3.5">
-                    {/* Booking / Tour Type Selection */}
-                    <div>
-                      <label className="text-xs font-semibold text-[#44474e] block mb-1">
-                        Viewing / Tour Type
-                      </label>
-                      <select
-                        value={bookingType}
-                        onChange={(e) => setBookingType(e.target.value)}
-                        className="w-full h-10 px-3 bg-[#f2f4f6] text-xs text-[#191c1e] rounded-lg border border-[#e7e8ea] focus:outline-none focus:border-[#076a64]"
-                      >
-                        {bookingTypesList.map((t) => (
-                          <option key={t.slug} value={t.slug}>
-                            {t.type_name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Date and Time Slot */}
-                    <div className="grid grid-cols-2 gap-2">
+                  <form onSubmit={handleBookingSubmit} className="flex flex-col gap-3">
+                    {/* If Viewing Mode: Show Type Selector */}
+                    {bookingMode === "viewing" && (
                       <div>
                         <label className="text-xs font-semibold text-[#44474e] block mb-1">
-                          Date
+                          Viewing / Tour Type
+                        </label>
+                        <select
+                          value={bookingType}
+                          onChange={(e) => setBookingType(e.target.value)}
+                          className="w-full h-10 px-3 bg-[#f2f4f6] text-xs text-[#191c1e] rounded-lg border border-[#e7e8ea] focus:outline-none focus:border-[#076a64]"
+                        >
+                          {bookingTypesList.map((t) => (
+                            <option key={t.slug} value={t.slug}>
+                              {t.type_name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Dates Configuration */}
+                    {bookingMode === "booking" && transaction === "rent" ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs font-semibold text-[#44474e] block mb-1">
+                            Move-in Date
+                          </label>
+                          <input
+                            type="date"
+                            value={bookingDate}
+                            onChange={(e) => setBookingDate(e.target.value)}
+                            required
+                            className="w-full h-10 px-2.5 bg-[#f2f4f6] text-xs text-[#191c1e] rounded-lg border border-[#e7e8ea] focus:outline-none focus:border-[#076a64]"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-[#44474e] block mb-1">
+                            Lease Duration
+                          </label>
+                          <select
+                            value={leaseDuration}
+                            onChange={(e) => setLeaseDuration(e.target.value)}
+                            className="w-full h-10 px-2.5 bg-[#f2f4f6] text-xs text-[#191c1e] rounded-lg border border-[#e7e8ea] focus:outline-none focus:border-[#076a64]"
+                          >
+                            <option>1 Year (Standard)</option>
+                            <option>6 Months</option>
+                            <option>2 Years</option>
+                            <option>3 Years</option>
+                          </select>
+                        </div>
+                      </div>
+                    ) : bookingMode === "booking" && transaction === "sale" ? (
+                      <div>
+                        <label className="text-xs font-semibold text-[#44474e] block mb-1">
+                          Proposed Transfer / Closing Date
                         </label>
                         <input
                           type="date"
                           value={bookingDate}
                           onChange={(e) => setBookingDate(e.target.value)}
                           required
-                          className="w-full h-10 px-2.5 bg-[#f2f4f6] text-xs text-[#191c1e] rounded-lg border border-[#e7e8ea] focus:outline-none focus:border-[#076a64]"
+                          className="w-full h-10 px-3 bg-[#f2f4f6] text-xs text-[#191c1e] rounded-lg border border-[#e7e8ea] focus:outline-none focus:border-[#076a64]"
                         />
                       </div>
-
-                      <div>
-                        <label className="text-xs font-semibold text-[#44474e] block mb-1">
-                          Preferred Slot
-                        </label>
-                        <select
-                          value={timeSlot}
-                          onChange={(e) => setTimeSlot(e.target.value)}
-                          className="w-full h-10 px-2.5 bg-[#f2f4f6] text-xs text-[#191c1e] rounded-lg border border-[#e7e8ea] focus:outline-none focus:border-[#076a64]"
-                        >
-                          <option>11:00 AM - 12:00 PM</option>
-                          <option>02:00 PM - 03:00 PM</option>
-                          <option>04:30 PM - 05:30 PM</option>
-                          <option>06:00 PM - 07:00 PM</option>
-                        </select>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs font-semibold text-[#44474e] block mb-1">
+                            Viewing Date
+                          </label>
+                          <input
+                            type="date"
+                            value={bookingDate}
+                            onChange={(e) => setBookingDate(e.target.value)}
+                            required
+                            className="w-full h-10 px-2.5 bg-[#f2f4f6] text-xs text-[#191c1e] rounded-lg border border-[#e7e8ea] focus:outline-none focus:border-[#076a64]"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-[#44474e] block mb-1">
+                            Preferred Slot
+                          </label>
+                          <select
+                            value={timeSlot}
+                            onChange={(e) => setTimeSlot(e.target.value)}
+                            className="w-full h-10 px-2.5 bg-[#f2f4f6] text-xs text-[#191c1e] rounded-lg border border-[#e7e8ea] focus:outline-none focus:border-[#076a64]"
+                          >
+                            <option>11:00 AM - 12:00 PM</option>
+                            <option>02:00 PM - 03:00 PM</option>
+                            <option>04:30 PM - 05:30 PM</option>
+                            <option>06:00 PM - 07:00 PM</option>
+                          </select>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
-                    {/* User Name */}
+                    {/* User Full Name */}
                     <div>
                       <label className="text-xs font-semibold text-[#44474e] block mb-1">
                         Your Full Name
@@ -588,7 +765,7 @@ export default function PropertyDetailPage({
                       />
                     </div>
 
-                    {/* User Email */}
+                    {/* Email Address */}
                     <div>
                       <label className="text-xs font-semibold text-[#44474e] block mb-1">
                         Email Address <span className="text-[#076a64] font-normal">(for verification)</span>
@@ -618,16 +795,20 @@ export default function PropertyDetailPage({
                       />
                     </div>
 
-                    {/* Special Notes / Questions */}
+                    {/* Special Notes / Move-in Requirements */}
                     <div>
                       <label className="text-xs font-semibold text-[#44474e] block mb-1">
-                        Special Instructions / Notes <span className="text-gray-400 font-normal">(optional)</span>
+                        Special Instructions / Requirements <span className="text-gray-400 font-normal">(optional)</span>
                       </label>
                       <textarea
                         rows={2}
                         value={notes}
                         onChange={(e) => setNotes(e.target.value)}
-                        placeholder="Any questions or specific areas of the property you want to inspect?"
+                        placeholder={
+                          transaction === "rent"
+                            ? "Number of family occupants, parking needs, or move-in notes..."
+                            : "Token transfer questions or closing requirements..."
+                        }
                         className="w-full p-2.5 bg-[#f2f4f6] text-xs text-[#191c1e] rounded-lg border border-[#e7e8ea] focus:outline-none focus:border-[#076a64] resize-none"
                       />
                     </div>
@@ -642,7 +823,11 @@ export default function PropertyDetailPage({
                         className="mt-0.5 h-4 w-4 rounded border-[#e7e8ea] text-[#076a64] focus:ring-[#076a64]"
                       />
                       <label htmlFor="agreedToTermsCheckbox" className="text-[11px] text-[#44474e] leading-snug cursor-pointer select-none">
-                        I agree to HavenKey's viewing and tenancy policies, verify that my details are accurate, and authorize HavenKey to notify the property owner.
+                        {bookingMode === "booking"
+                          ? transaction === "rent"
+                            ? `I confirm my intent to rent this property at ${priceDisplay}/mo, agree to HavenKey's digital tenancy terms, and authorize HavenKey to notify the property owner.`
+                            : `I confirm my intent to purchase this property, agree to HavenKey's token reservation terms, and authorize HavenKey to notify the property owner.`
+                          : `I agree to HavenKey's viewing policies, verify that my details are accurate, and authorize HavenKey to notify the property owner.`}
                       </label>
                     </div>
 
@@ -654,22 +839,28 @@ export default function PropertyDetailPage({
                       {isSubmittingBooking ? (
                         <>
                           <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
-                          <span>Confirming &amp; Dispatching Emails...</span>
+                          <span>Confirming Booking &amp; Sending Emails...</span>
                         </>
                       ) : (
                         <>
-                          <span className="material-symbols-outlined text-[18px]">calendar_month</span>
-                          <span>Confirm Tour Booking</span>
+                          <span className="material-symbols-outlined text-[18px]">verified</span>
+                          <span>
+                            {bookingMode === "booking"
+                              ? transaction === "rent"
+                                ? "Confirm Online Rental Booking"
+                                : "Confirm Online Purchase Booking"
+                              : "Confirm Tour Booking"}
+                          </span>
                         </>
                       )}
                     </button>
 
-                    <div className="p-2.5 bg-[#f2f4f6] rounded-lg flex items-start gap-2 text-[11px] text-[#44474e]">
-                      <span className="material-symbols-outlined text-[16px] text-[#076a64] shrink-0 mt-0.5">
-                        verified
+                    <div className="p-2 bg-[#f2f4f6] rounded-lg flex items-start gap-2 text-[11px] text-[#44474e]">
+                      <span className="material-symbols-outlined text-[15px] text-[#076a64] shrink-0 mt-0.5">
+                        verified_user
                       </span>
                       <span>
-                        Protected by HavenKey biometric verification and zero-brokerage guarantee.
+                        Protected by HavenKey biometric verification and zero-brokerage escrow.
                       </span>
                     </div>
                   </form>

@@ -15,18 +15,31 @@ export async function POST(req: Request) {
     const {
       propertyId,
       property_id,
+      listingType,
+      listing_type,
       userName,
       user_name,
       userEmail,
       user_email,
       userPhone,
       user_phone,
+      startDate,
+      start_date,
+      endDate,
+      end_date,
+      duration,
       bookingDate,
       booking_date,
       timeSlot,
       time_slot,
       bookingType,
-      booking_type = "in_person",
+      booking_type,
+      monthlyRent,
+      monthly_rent,
+      securityDeposit,
+      security_deposit,
+      tokenAmount,
+      token_amount,
       notes,
       agreedToTerms,
       agreed_to_terms,
@@ -38,9 +51,11 @@ export async function POST(req: Request) {
     const name = (userName || user_name || "").trim();
     const email = (userEmail || user_email || "").trim().toLowerCase();
     const phone = (userPhone || user_phone || "").trim();
-    const date = bookingDate || booking_date;
-    const slot = timeSlot || time_slot;
-    const bType = bookingType || booking_type;
+    const lType = (listingType || listing_type || "rent").toLowerCase();
+    const sDate = startDate || start_date || bookingDate || booking_date;
+    const eDate = endDate || end_date;
+    const slot = timeSlot || time_slot || "11:00 AM - 12:00 PM";
+    const bType = bookingType || booking_type || (lType === "rent" ? "rent_booking" : "sale_booking");
     const agreed = agreedToTerms ?? agreed_to_terms ?? false;
     const rawUserId = userId || user_id || null;
 
@@ -57,15 +72,12 @@ export async function POST(req: Request) {
     if (!phone) {
       return NextResponse.json({ success: false, message: "Phone or WhatsApp contact number is required." }, { status: 400 });
     }
-    if (!date) {
-      return NextResponse.json({ success: false, message: "Viewing date is required." }, { status: 400 });
-    }
-    if (!slot) {
-      return NextResponse.json({ success: false, message: "Preferred time slot is required." }, { status: 400 });
+    if (!sDate) {
+      return NextResponse.json({ success: false, message: "Start date / move-in date is required." }, { status: 400 });
     }
     if (!agreed) {
       return NextResponse.json(
-        { success: false, message: "You must agree to HavenKey's viewing and platform policies to proceed." },
+        { success: false, message: "You must agree to HavenKey's booking & tenancy policies to proceed." },
         { status: 400 }
       );
     }
@@ -75,6 +87,7 @@ export async function POST(req: Request) {
     // Fetch property information from Supabase
     let propertyTitle = "HavenKey Verified Property";
     let propertyLocation = "Pakistan";
+    let propertyPrice = 0;
     let ownerId: string | null = null;
     let ownerName = "Property Owner / Concierge";
     let ownerEmail = "concierge@havenkey.pk";
@@ -82,13 +95,14 @@ export async function POST(req: Request) {
     try {
       const { data: propData } = await supabaseAdmin
         .from("properties")
-        .select("id, title, location, address, price, owner_id")
+        .select("id, title, location, address, price, owner_id, listing_type")
         .eq("id", propId)
         .maybeSingle();
 
       if (propData) {
         propertyTitle = propData.title || propertyTitle;
         propertyLocation = propData.location || propData.address || propertyLocation;
+        propertyPrice = Number(propData.price || 0);
         ownerId = propData.owner_id || null;
 
         // Fetch owner user details if owner_id exists
@@ -109,15 +123,60 @@ export async function POST(req: Request) {
       console.warn("[BookingAPI] Property metadata fetch warning:", err.message);
     }
 
-    // Persist booking into Supabase bookings table
-    let bookingRecordId = uuidv4();
+    // Determine financial amounts
+    const finalRent = Number(monthlyRent || monthly_rent || propertyPrice);
+    const finalDeposit = Number(securityDeposit || security_deposit || (lType === "rent" ? finalRent * 2 : finalRent * 0.1));
+    const finalToken = Number(tokenAmount || token_amount || finalDeposit);
+
+    // Calculate end date if not provided (default 1 year for rent)
+    let calculatedEndDate = eDate;
+    if (!calculatedEndDate) {
+      const d = new Date(sDate);
+      d.setFullYear(d.getFullYear() + 1);
+      calculatedEndDate = d.toISOString().split("T")[0];
+    }
+
+    const bookingRecordId = uuidv4();
+    let agreementId: string | null = null;
     let dbPersisted = false;
 
+    // 1. Persist in agreements table (Digital Tenancy / Purchase Token Reservation)
     try {
-      const { data: inserted, error: insertErr } = await supabaseAdmin
+      const { data: agrInserted, error: agrErr } = await supabaseAdmin
+        .from("agreements")
+        .insert([
+          {
+            property_id: propId,
+            owner_id: ownerId,
+            tenant_id: sanitizedUserId,
+            start_date: sDate,
+            end_date: lType === "rent" ? calculatedEndDate : sDate,
+            monthly_rent: lType === "rent" ? finalRent : propertyPrice,
+            security_deposit: lType === "rent" ? finalDeposit : finalToken,
+            agreement_doc: `HAVENKEY-${lType.toUpperCase()}-BOOKING-${bookingRecordId.slice(0, 8)}`,
+            status: "pending",
+          },
+        ])
+        .select()
+        .maybeSingle();
+
+      if (!agrErr && agrInserted) {
+        agreementId = agrInserted.id;
+        dbPersisted = true;
+      } else if (agrErr) {
+        console.warn("[BookingAPI] Supabase agreements insert warning:", agrErr.message);
+      }
+    } catch (agrErr: any) {
+      console.warn("[BookingAPI] Exception inserting into agreements:", agrErr.message);
+    }
+
+    // 2. Persist in bookings table for tracking
+    try {
+      const { error: bkErr } = await supabaseAdmin
         .from("bookings")
         .insert([
           {
+            id: bookingRecordId,
             property_id: propId,
             owner_id: ownerId,
             user_id: sanitizedUserId,
@@ -125,34 +184,35 @@ export async function POST(req: Request) {
             user_name: name,
             user_email: email,
             user_phone: phone,
-            booking_date: date,
+            booking_date: sDate,
             time_slot: slot,
             notes: notes ? String(notes).trim() : null,
             agreed_to_terms: true,
             status: "pending",
           },
-        ])
-        .select()
-        .maybeSingle();
+        ]);
 
-      if (!insertErr && inserted) {
-        bookingRecordId = inserted.id;
-        dbPersisted = true;
-      } else if (insertErr) {
-        console.warn("[BookingAPI] Supabase bookings insert notice (table may be pending):", insertErr.message);
-      }
-    } catch (dbErr: any) {
-      console.warn("[BookingAPI] Database exception while inserting booking:", dbErr.message);
+      if (!bkErr) dbPersisted = true;
+    } catch (bkErr: any) {
+      console.warn("[BookingAPI] Exception inserting into bookings:", bkErr.message);
     }
 
     // Prepare email data payload
     const emailPayload = {
-      bookingId: bookingRecordId,
+      bookingId: agreementId || bookingRecordId,
       propertyTitle,
       propertyLocation,
-      bookingDate: date,
+      listingType: lType,
+      propertyPrice,
+      monthlyRent: finalRent,
+      securityDeposit: finalDeposit,
+      tokenAmount: finalToken,
+      startDate: sDate,
+      endDate: calculatedEndDate,
+      duration: duration || "1 Year",
+      bookingDate: sDate,
       timeSlot: slot,
-      bookingType: bType === "video_tour" ? "Live Video Tour" : (bType === "inspection" ? "Technical Property Inspection" : "In-Person Private Viewing"),
+      bookingType: bType,
       userName: name,
       userEmail: email,
       userPhone: phone,
@@ -161,23 +221,33 @@ export async function POST(req: Request) {
       notes: notes ? String(notes).trim() : undefined,
     };
 
-    // Dispatch dual verification emails in background (async non-blocking)
+    // Dispatch dual verification emails (User + Owner)
     const [userEmailRes, ownerEmailRes] = await Promise.all([
       sendUserBookingConfirmation(emailPayload),
       sendOwnerBookingNotification(emailPayload),
     ]);
 
+    const isRent = lType === "rent";
+    const confirmationMsg = isRent
+      ? "Your online rental booking has been registered! Verification emails have been sent to you and the property owner."
+      : "Your online purchase reservation has been registered! Verification emails have been sent to you and the property owner.";
+
     return NextResponse.json(
       {
         success: true,
-        message: "Your viewing booking has been confirmed! Verification emails have been sent to you and the property owner.",
+        message: confirmationMsg,
         booking: {
-          id: bookingRecordId,
+          id: agreementId || bookingRecordId,
+          agreementId,
           propertyTitle,
           propertyLocation,
-          bookingDate: date,
-          timeSlot: slot,
-          bookingType: bType,
+          listingType: lType,
+          startDate: sDate,
+          endDate: calculatedEndDate,
+          duration: duration || "1 Year",
+          monthlyRent: finalRent,
+          securityDeposit: finalDeposit,
+          tokenAmount: finalToken,
           user: { name, email, phone },
           owner: { name: ownerName, email: ownerEmail },
           dbPersisted,

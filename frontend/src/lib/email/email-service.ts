@@ -4,9 +4,16 @@ export interface BookingEmailData {
   bookingId: string;
   propertyTitle: string;
   propertyLocation: string;
-  propertyPrice?: string;
-  bookingDate: string;
-  timeSlot: string;
+  listingType?: "rent" | "sale" | string;
+  propertyPrice?: number | string;
+  monthlyRent?: number;
+  securityDeposit?: number;
+  tokenAmount?: number;
+  startDate?: string;
+  endDate?: string;
+  duration?: string;
+  bookingDate?: string;
+  timeSlot?: string;
   bookingType: string;
   userName: string;
   userEmail: string;
@@ -16,10 +23,6 @@ export interface BookingEmailData {
   notes?: string;
 }
 
-/**
- * Creates and returns the Nodemailer transporter using environment variables.
- * Returns null if SMTP is not configured.
- */
 function getTransporter() {
   const host = process.env.SMTP_HOST;
   const port = Number(process.env.SMTP_PORT) || 587;
@@ -46,17 +49,37 @@ const FROM_EMAIL =
   `"HavenKey Concierge" <no-reply@havenkey.pk>`;
 
 /**
- * Dispatches verification email to the prospective tenant / user.
+ * Dispatches verification email to the user (tenant/buyer).
  */
 export async function sendUserBookingConfirmation(data: BookingEmailData): Promise<{ success: boolean; simulated?: boolean }> {
   const transporter = getTransporter();
+
+  const isRent = data.listingType === "rent" || data.bookingType === "rent_booking";
+  const isSale = data.listingType === "sale" || data.bookingType === "sale_booking";
+
+  let headerTitle = "Viewing Request Confirmation";
+  let subHeader = "Your appointment has been registered and sent to the owner.";
+  let badgeText = "Viewing Request Received";
+  let subjectText = `[HavenKey] Viewing Confirmation: ${data.propertyTitle}`;
+
+  if (isRent) {
+    headerTitle = "Online Rental Booking Confirmation";
+    subHeader = "Your digital tenancy lease reservation has been registered.";
+    badgeText = "Rental Booking & Lease Agreement Pending";
+    subjectText = `[HavenKey] Rental Booking Confirmation: ${data.propertyTitle}`;
+  } else if (isSale) {
+    headerTitle = "Online Purchase Reservation Confirmation";
+    subHeader = "Your property purchase token reservation has been registered.";
+    badgeText = "Purchase Token Reservation Pending";
+    subjectText = `[HavenKey] Property Purchase Reservation: ${data.propertyTitle}`;
+  }
 
   const htmlContent = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Your HavenKey Viewing Confirmation</title>
+  <title>${headerTitle}</title>
 </head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8f9fb; margin: 0; padding: 24px; color: #191c1e;">
   <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e7e8ea; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
@@ -64,29 +87,29 @@ export async function sendUserBookingConfirmation(data: BookingEmailData): Promi
     <!-- Header -->
     <div style="background: linear-gradient(135deg, #076a64 0%, #001637 100%); padding: 32px 24px; text-align: center; color: #ffffff;">
       <h1 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">HavenKey</h1>
-      <p style="margin: 6px 0 0 0; font-size: 13px; color: #a1f1e9; letter-spacing: 0.5px;">VERIFIED REAL ESTATE ECOSYSTEM</p>
+      <p style="margin: 6px 0 0 0; font-size: 13px; color: #a1f1e9; letter-spacing: 0.5px;">${headerTitle.toUpperCase()}</p>
     </div>
 
     <!-- Body -->
     <div style="padding: 28px 24px;">
       <div style="background-color: #e6f7f6; border-left: 4px solid #076a64; padding: 12px 16px; border-radius: 4px; margin-bottom: 20px;">
-        <p style="margin: 0; color: #076a64; font-weight: 600; font-size: 14px;">Viewing Request Received &amp; Awaiting Owner Confirmation</p>
+        <p style="margin: 0; color: #076a64; font-weight: 600; font-size: 14px;">${badgeText}</p>
       </div>
 
       <p style="font-size: 14px; line-height: 1.5; color: #44474e;">
         Hello <strong>${data.userName}</strong>,
       </p>
       <p style="font-size: 14px; line-height: 1.5; color: #44474e;">
-        Thank you for choosing HavenKey. Your viewing request for <strong>${data.propertyTitle}</strong> has been logged and sent to the property owner for review.
+        ${subHeader}
       </p>
 
-      <!-- Booking Summary Box -->
+      <!-- Summary Box -->
       <div style="background: #f2f4f6; border-radius: 8px; padding: 18px; margin: 20px 0; border: 1px solid #e7e8ea;">
-        <h3 style="margin: 0 0 12px 0; font-size: 14px; color: #001637; text-transform: uppercase; letter-spacing: 0.5px;">Appointment Details</h3>
+        <h3 style="margin: 0 0 12px 0; font-size: 14px; color: #001637; text-transform: uppercase; letter-spacing: 0.5px;">Booking &amp; Agreement Details</h3>
         
         <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
           <tr>
-            <td style="padding: 6px 0; color: #75777f; width: 140px;">Booking Ref:</td>
+            <td style="padding: 6px 0; color: #75777f; width: 150px;">Reference ID:</td>
             <td style="padding: 6px 0; font-weight: 600; font-family: monospace; color: #001637;">#${data.bookingId.slice(0, 8)}</td>
           </tr>
           <tr>
@@ -97,27 +120,69 @@ export async function sendUserBookingConfirmation(data: BookingEmailData): Promi
             <td style="padding: 6px 0; color: #75777f;">Location:</td>
             <td style="padding: 6px 0; color: #191c1e;">${data.propertyLocation}</td>
           </tr>
+
+          ${
+            isRent
+              ? `
           <tr>
-            <td style="padding: 6px 0; color: #75777f;">Date:</td>
+            <td style="padding: 6px 0; color: #75777f;">Monthly Rent:</td>
+            <td style="padding: 6px 0; font-weight: 600; color: #076a64;">PKR ${Number(data.monthlyRent || data.propertyPrice || 0).toLocaleString()} / mo</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #75777f;">Security Deposit:</td>
+            <td style="padding: 6px 0; font-weight: 600; color: #001637;">PKR ${Number(data.securityDeposit || 0).toLocaleString()} (Escrow Protected)</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #75777f;">Move-in Date:</td>
+            <td style="padding: 6px 0; font-weight: 600; color: #076a64;">${data.startDate || data.bookingDate}</td>
+          </tr>
+          ${
+            data.duration
+              ? `
+          <tr>
+            <td style="padding: 6px 0; color: #75777f;">Lease Duration:</td>
+            <td style="padding: 6px 0; color: #191c1e;">${data.duration}</td>
+          </tr>
+          `
+              : ""
+          }
+          `
+              : isSale
+              ? `
+          <tr>
+            <td style="padding: 6px 0; color: #75777f;">Property Price:</td>
+            <td style="padding: 6px 0; font-weight: 600; color: #076a64;">PKR ${Number(data.propertyPrice || 0).toLocaleString()}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #75777f;">Token Reservation:</td>
+            <td style="padding: 6px 0; font-weight: 600; color: #001637;">PKR ${Number(data.tokenAmount || data.securityDeposit || 0).toLocaleString()} (Escrow Held)</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #75777f;">Target Closing Date:</td>
+            <td style="padding: 6px 0; font-weight: 600; color: #076a64;">${data.startDate || data.bookingDate}</td>
+          </tr>
+          `
+              : `
+          <tr>
+            <td style="padding: 6px 0; color: #75777f;">Viewing Date:</td>
             <td style="padding: 6px 0; font-weight: 600; color: #076a64;">${data.bookingDate}</td>
           </tr>
           <tr>
             <td style="padding: 6px 0; color: #75777f;">Time Slot:</td>
             <td style="padding: 6px 0; font-weight: 600; color: #076a64;">${data.timeSlot}</td>
           </tr>
-          <tr>
-            <td style="padding: 6px 0; color: #75777f;">Viewing Type:</td>
-            <td style="padding: 6px 0; color: #191c1e;">${data.bookingType}</td>
-          </tr>
+          `
+          }
+
           <tr>
             <td style="padding: 6px 0; color: #75777f;">Property Owner:</td>
-            <td style="padding: 6px 0; color: #191c1e;">${data.ownerName}</td>
+            <td style="padding: 6px 0; color: #191c1e;">${data.ownerName} (${data.ownerEmail})</td>
           </tr>
         </table>
       </div>
 
       <p style="font-size: 12px; color: #75777f; line-height: 1.5;">
-        <strong>HavenKey Security Notice:</strong> All viewings and lease agreements are covered by our zero-brokerage and tenancy escrow guarantee. Never make cash payments before signing a digital tenancy agreement on HavenKey.
+        <strong>HavenKey Tenancy &amp; Escrow Guarantee:</strong> All rental security deposits and token reservations on HavenKey are held securely in our digital escrow until lease signing or verification inspection.
       </p>
     </div>
 
@@ -131,12 +196,7 @@ export async function sendUserBookingConfirmation(data: BookingEmailData): Promi
 `;
 
   if (!transporter) {
-    console.log("\n=======================================================");
-    console.log("[EmailService] (SIMULATED USER EMAIL)");
-    console.log(`To: ${data.userEmail} (${data.userName})`);
-    console.log(`Subject: [HavenKey] Your Viewing Request for ${data.propertyTitle}`);
-    console.log(`Date: ${data.bookingDate} | Time: ${data.timeSlot} | Type: ${data.bookingType}`);
-    console.log("=======================================================\n");
+    console.log(`[EmailService] (SIMULATED USER EMAIL) To: ${data.userEmail} | Subject: ${subjectText}`);
     return { success: true, simulated: true };
   }
 
@@ -144,7 +204,7 @@ export async function sendUserBookingConfirmation(data: BookingEmailData): Promi
     await transporter.sendMail({
       from: FROM_EMAIL,
       to: data.userEmail,
-      subject: `[HavenKey] Viewing Confirmation: ${data.propertyTitle}`,
+      subject: subjectText,
       html: htmlContent,
     });
     return { success: true };
@@ -155,17 +215,34 @@ export async function sendUserBookingConfirmation(data: BookingEmailData): Promi
 }
 
 /**
- * Dispatches viewing notification email to the property owner / landlord.
+ * Dispatches notification email to the property owner / landlord.
  */
 export async function sendOwnerBookingNotification(data: BookingEmailData): Promise<{ success: boolean; simulated?: boolean }> {
   const transporter = getTransporter();
+
+  const isRent = data.listingType === "rent" || data.bookingType === "rent_booking";
+  const isSale = data.listingType === "sale" || data.bookingType === "sale_booking";
+
+  let headerTitle = "New Viewing Appointment";
+  let badgeTitle = "Action Required: New Viewing Scheduled";
+  let subjectText = `[HavenKey Alert] New Viewing Request: ${data.propertyTitle}`;
+
+  if (isRent) {
+    headerTitle = "New Rental Booking Received";
+    badgeTitle = "Action Required: New Digital Tenancy Booking";
+    subjectText = `[HavenKey Alert] New Rental Booking: ${data.propertyTitle}`;
+  } else if (isSale) {
+    headerTitle = "New Property Purchase Booking";
+    badgeTitle = "Action Required: New Purchase Token Reservation";
+    subjectText = `[HavenKey Alert] New Property Purchase Booking: ${data.propertyTitle}`;
+  }
 
   const htmlContent = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>New Viewing Appointment - HavenKey</title>
+  <title>${headerTitle}</title>
 </head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8f9fb; margin: 0; padding: 24px; color: #191c1e;">
   <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e7e8ea; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
@@ -173,33 +250,33 @@ export async function sendOwnerBookingNotification(data: BookingEmailData): Prom
     <!-- Header -->
     <div style="background: linear-gradient(135deg, #001637 0%, #076a64 100%); padding: 32px 24px; text-align: center; color: #ffffff;">
       <h1 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">HavenKey</h1>
-      <p style="margin: 6px 0 0 0; font-size: 13px; color: #a1f1e9; letter-spacing: 0.5px;">OWNER CONCIERGE NOTIFICATION</p>
+      <p style="margin: 6px 0 0 0; font-size: 13px; color: #a1f1e9; letter-spacing: 0.5px;">${headerTitle.toUpperCase()}</p>
     </div>
 
     <!-- Body -->
     <div style="padding: 28px 24px;">
       <div style="background-color: #eaf1fb; border-left: 4px solid #001637; padding: 12px 16px; border-radius: 4px; margin-bottom: 20px;">
-        <p style="margin: 0; color: #001637; font-weight: 600; font-size: 14px;">Action Required: New Property Viewing Scheduled</p>
+        <p style="margin: 0; color: #001637; font-weight: 600; font-size: 14px;">${badgeTitle}</p>
       </div>
 
       <p style="font-size: 14px; line-height: 1.5; color: #44474e;">
         Hello <strong>${data.ownerName}</strong>,
       </p>
       <p style="font-size: 14px; line-height: 1.5; color: #44474e;">
-        A verified prospective tenant has scheduled a viewing appointment for your property <strong>${data.propertyTitle}</strong>.
+        A verified user has submitted an online booking for your property <strong>${data.propertyTitle}</strong>.
       </p>
 
-      <!-- Tenant Info Box -->
+      <!-- Tenant / Buyer Info Box -->
       <div style="background: #f2f4f6; border-radius: 8px; padding: 18px; margin: 20px 0; border: 1px solid #e7e8ea;">
-        <h3 style="margin: 0 0 12px 0; font-size: 14px; color: #001637; text-transform: uppercase; letter-spacing: 0.5px;">Prospective Tenant Information</h3>
+        <h3 style="margin: 0 0 12px 0; font-size: 14px; color: #001637; text-transform: uppercase; letter-spacing: 0.5px;">Applicant Information</h3>
         
         <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
           <tr>
-            <td style="padding: 6px 0; color: #75777f; width: 140px;">Tenant Name:</td>
+            <td style="padding: 6px 0; color: #75777f; width: 140px;">Applicant Name:</td>
             <td style="padding: 6px 0; font-weight: 600; color: #001637;">${data.userName}</td>
           </tr>
           <tr>
-            <td style="padding: 6px 0; color: #75777f;">Email:</td>
+            <td style="padding: 6px 0; color: #75777f;">Email Address:</td>
             <td style="padding: 6px 0; color: #076a64; font-weight: 500;">
               <a href="mailto:${data.userEmail}" style="color: #076a64; text-decoration: none;">${data.userEmail}</a>
             </td>
@@ -208,23 +285,51 @@ export async function sendOwnerBookingNotification(data: BookingEmailData): Prom
             <td style="padding: 6px 0; color: #75777f;">Phone / WhatsApp:</td>
             <td style="padding: 6px 0; font-weight: 600; color: #001637;">${data.userPhone}</td>
           </tr>
+
+          ${
+            isRent
+              ? `
           <tr>
-            <td style="padding: 6px 0; color: #75777f;">Requested Date:</td>
-            <td style="padding: 6px 0; font-weight: 600; color: #076a64;">${data.bookingDate}</td>
+            <td style="padding: 6px 0; color: #75777f;">Proposed Rent:</td>
+            <td style="padding: 6px 0; font-weight: 600; color: #076a64;">PKR ${Number(data.monthlyRent || data.propertyPrice || 0).toLocaleString()} / mo</td>
           </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #75777f;">Security Deposit:</td>
+            <td style="padding: 6px 0; font-weight: 600; color: #001637;">PKR ${Number(data.securityDeposit || 0).toLocaleString()}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #75777f;">Move-in Date:</td>
+            <td style="padding: 6px 0; font-weight: 600; color: #076a64;">${data.startDate || data.bookingDate}</td>
+          </tr>
+          `
+              : isSale
+              ? `
+          <tr>
+            <td style="padding: 6px 0; color: #75777f;">Purchase Price:</td>
+            <td style="padding: 6px 0; font-weight: 600; color: #076a64;">PKR ${Number(data.propertyPrice || 0).toLocaleString()}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #75777f;">Token Deposit:</td>
+            <td style="padding: 6px 0; font-weight: 600; color: #001637;">PKR ${Number(data.tokenAmount || data.securityDeposit || 0).toLocaleString()}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #75777f;">Closing Date:</td>
+            <td style="padding: 6px 0; font-weight: 600; color: #076a64;">${data.startDate || data.bookingDate}</td>
+          </tr>
+          `
+              : `
           <tr>
             <td style="padding: 6px 0; color: #75777f;">Requested Slot:</td>
-            <td style="padding: 6px 0; font-weight: 600; color: #076a64;">${data.timeSlot}</td>
+            <td style="padding: 6px 0; font-weight: 600; color: #076a64;">${data.bookingDate} (${data.timeSlot})</td>
           </tr>
-          <tr>
-            <td style="padding: 6px 0; color: #75777f;">Viewing Type:</td>
-            <td style="padding: 6px 0; color: #191c1e;">${data.bookingType}</td>
-          </tr>
+          `
+          }
+
           ${
             data.notes
               ? `
           <tr>
-            <td style="padding: 6px 0; color: #75777f; vertical-align: top;">Tenant Notes:</td>
+            <td style="padding: 6px 0; color: #75777f; vertical-align: top;">Applicant Notes:</td>
             <td style="padding: 6px 0; color: #191c1e; font-style: italic;">"${data.notes}"</td>
           </tr>
           `
@@ -234,7 +339,7 @@ export async function sendOwnerBookingNotification(data: BookingEmailData): Prom
       </div>
 
       <p style="font-size: 13px; color: #44474e; line-height: 1.5;">
-        Please ensure the property is accessible at the requested time slot. You can reach out directly to the prospective tenant via phone or WhatsApp above.
+        You can connect directly with the applicant via phone or WhatsApp above, or review the booking in your HavenKey Landlord Dashboard.
       </p>
     </div>
 
@@ -248,13 +353,7 @@ export async function sendOwnerBookingNotification(data: BookingEmailData): Prom
 `;
 
   if (!transporter) {
-    console.log("\n=======================================================");
-    console.log("[EmailService] (SIMULATED OWNER EMAIL)");
-    console.log(`To: ${data.ownerEmail} (${data.ownerName})`);
-    console.log(`Subject: [HavenKey] New Viewing Request for ${data.propertyTitle}`);
-    console.log(`From Prospective Tenant: ${data.userName} (${data.userEmail}, ${data.userPhone})`);
-    console.log(`Date: ${data.bookingDate} | Slot: ${data.timeSlot} | Type: ${data.bookingType}`);
-    console.log("=======================================================\n");
+    console.log(`[EmailService] (SIMULATED OWNER EMAIL) To: ${data.ownerEmail} | Subject: ${subjectText}`);
     return { success: true, simulated: true };
   }
 
@@ -262,7 +361,7 @@ export async function sendOwnerBookingNotification(data: BookingEmailData): Prom
     await transporter.sendMail({
       from: FROM_EMAIL,
       to: data.ownerEmail,
-      subject: `[HavenKey Alert] New Viewing Request: ${data.propertyTitle}`,
+      subject: subjectText,
       html: htmlContent,
     });
     return { success: true };
