@@ -1,0 +1,73 @@
+# ==============================================================================
+# HavenKey Website Monorepo - Master Requirements & Dependencies Specification
+# Architecture: Next.js 16 (Frontend) + Express.js TypeScript (Backend)
+# Node.js: >=20.0.0
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Monorepo Root Tools
+# ------------------------------------------------------------------------------
+concurrently>=9.1.2
+bcryptjs>=3.0.3
+@types/bcryptjs>=2.4.6
+
+# ------------------------------------------------------------------------------
+# 2. Frontend Dependencies (Next.js 16 + React 19 + Tailwind CSS + Local AI RAG)
+# ------------------------------------------------------------------------------
+@huggingface/transformers>=4.3.2
+@supabase/supabase-js>=2.118.0
+bcryptjs>=2.4.3
+next>=16.4.4
+nodemailer>=10.3.1
+pdf-parse>=2.4.5
+react>=19.3.0
+react-dom>=19.3.0
+unpdf>=1.9.1
+uuid>=14.0.3
+
+# Frontend Dev & Build
+@tailwindcss/postcss>=4.3.4
+@tailwindcss/turbopack>=4.0.0
+@types/bcryptjs>=2.4.6
+@types/node>=20.0.0
+@types/nodemailer>=8.0.2
+@types/pdf-parse>=1.1.5
+@types/react>=19.0.0
+@types/react-dom>=19.0.0
+@types/uuid>=10.0.0
+eslint>=9.0.0
+eslint-config-next>=16.4.4
+postcss>=8.5.3
+tailwindcss>=4.0.0
+typescript>=5.0.0
+
+# ------------------------------------------------------------------------------
+# 3. Backend Dependencies (Express.js REST API + TypeScript + Multer)
+# ------------------------------------------------------------------------------
+@supabase/supabase-js>=2.118.0
+bcryptjs>=2.4.3
+cors>=2.8.5
+dotenv>=16.4.7
+express>=4.21.2
+morgan>=1.10.0
+multer>=2.5.0
+tsx>=4.19.3
+typescript>=5.7.3
+
+# Backend Dev & Types
+@types/bcryptjs>=2.4.6
+@types/cors>=2.8.17
+@types/express>=5.0.0
+@types/morgan>=1.9.9
+@types/multer>=2.3.0
+@types/node>=22.13.4
+
+# ==============================================================================
+# Quick Start Commands for New Laptop:
+# 1. Install all dependencies across monorepo:
+#      npm install
+# 2. Download local AI models (Embeddings & Qwen LLM):
+#      npm run setup:ai
+# 3. Start development servers:
+#      npm run dev
+# ==============================================================================

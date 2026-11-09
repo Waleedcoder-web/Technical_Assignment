@@ -1,0 +1,27 @@
+{
+  "name": "patronecs-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "HavenKey Full-Stack Platform (Next.js + Express.js)",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n \"FRONTEND,BACKEND\" -c \"cyan,green\" \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "npm --prefix backend run dev",
+    "test:supabase": "npm --prefix backend run test:supabase",
+    "setup:model": "npm --prefix frontend run setup:model",
+    "setup:llm": "npm --prefix frontend run setup:llm",
+    "setup:ai": "npm --prefix frontend run setup:model && npm --prefix frontend run setup:llm",
+    "build": "npm --prefix backend run build && npm --prefix frontend run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "dependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "bcryptjs": "^3.0.3"
+  }
+}

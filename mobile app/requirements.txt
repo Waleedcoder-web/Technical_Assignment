@@ -1,0 +1,38 @@
+# ==============================================================================
+# HavenKey Mobile App - Requirements & Dependencies Specification
+# Framework: Flutter / Dart (Mobile iOS & Android)
+# Package Manager: flutter pub (managed via pubspec.yaml)
+# ==============================================================================
+
+# 1. Environment & SDK Prerequisites:
+# - Flutter SDK: >=3.0.0 <4.0.0
+# - Dart SDK: >=3.0.0 <4.0.0
+# - Android Studio / Xcode (for device/emulator builds)
+
+# 2. Production / Runtime Dependencies:
+flutter
+cupertino_icons>=1.0.8
+google_fonts>=6.2.1
+http>=1.2.2
+provider>=6.1.2
+intl>=0.19.0
+supabase_flutter>=2.18.3
+mailer>=7.3.0
+image_picker>=1.2.4
+bcrypt>=1.2.0
+
+# 3. Development & Testing Dependencies:
+flutter_test
+flutter_lints>=4.0.0
+
+# ==============================================================================
+# How to Install & Run Mobile App:
+# 1. Ensure Flutter SDK is installed and added to PATH:
+#      flutter --version
+# 2. Open this directory:
+#      cd "mobile app"
+# 3. Fetch all packages:
+#      flutter pub get
+# 4. Launch on emulator or physical phone:
+#      flutter run
+# ==============================================================================

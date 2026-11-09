@@ -61,5 +61,8 @@ uploads/
 !**/uploads/.gitkeep
 
 # ML & ONNX models
+*.onnx
+**/*.onnx
+website/frontend/models/**/*.onnx
 frontend/models/**/*.onnx
 models/**/*.onnx
